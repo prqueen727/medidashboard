@@ -153,10 +153,11 @@ function normalizeName(value: string) {
   return value.toLowerCase().replace(/[\s·.,()[\]-]/g, '');
 }
 
-// 통합검색 콘텐츠 중 제목에 상호명이 들어간 항목
+// 통합검색 콘텐츠 중 블로그명·제목·설명에 상호명이 들어간 항목
 function getNameMentions(item: KeywordResult, name: string) {
   const target = normalizeName(name);
-  return target ? (item.contents ?? []).filter((content) => normalizeName(content.title).includes(target)) : [];
+  return target ? (item.contents ?? []).filter((content) =>
+    [content.source, content.title, content.description].some((text) => text && normalizeName(text).includes(target))) : [];
 }
 
 // 상호명 노출 개수를 내 병원과 비교한 차이
@@ -651,7 +652,7 @@ export default function DashboardClient() {
             </tbody>
           </table>
         </div>
-        <p className="result-footnote">통합검색 1페이지에서 콘텐츠로 센 항목(광고·플레이스·웹사이트 제외) 중 제목에 병원명이 들어간 개수입니다. 띄어쓰기는 무시하며, 숫자에 마우스를 올리면 해당 제목을 볼 수 있습니다.</p>
+        <p className="result-footnote">통합검색 1페이지에서 콘텐츠로 센 항목(광고·플레이스·웹사이트 제외) 중 블로그명·제목·설명에 병원명이 들어간 개수입니다. 띄어쓰기는 무시하며, 숫자에 마우스를 올리면 해당 제목을 볼 수 있습니다.</p>
       </div>
     );
   };
@@ -823,6 +824,11 @@ export default function DashboardClient() {
                     <div className="blog"><small>공식 블로그</small><Rank value={item.integratedRank} /></div>
                     {selectedClinic?.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
                     {selectedClinic?.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
+                    {item.contents && selectedClinic && (
+                      <div className="mentions" title={getNameMentions(item, selectedClinic.name).map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined}>
+                        <small>상호명</small><strong className="rank-value">{getNameMentions(item, selectedClinic.name).length}<small>개</small></strong>
+                      </div>
+                    )}
                   </div>
                   <p>{item.integratedError ?? `1페이지 콘텐츠 ${item.contents?.length ?? 0}개 기준`}</p>
                 </article>

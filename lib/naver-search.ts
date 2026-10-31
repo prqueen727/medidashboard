@@ -13,6 +13,8 @@ export interface ContentItem {
   key: string;
   title: string;
   link: string;
+  source?: string;
+  description?: string;
 }
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -148,14 +150,17 @@ export function parseContents(html: string, includeKeys: string[] = []): Content
     const host = card.key.split('/')[0];
     const type = CONTENT_HOSTS[host] ?? (includeKeys.includes(card.key) ? 'web' : undefined);
     if (!type) continue;
-    const titleLink = card.links.find((link) => (link.target === '.link' || link.target === '.tit') && link.text)
-      ?? card.links.find((link) => link.text);
+    const textLinks = card.links.filter((link) => ['.link', '.tit', '.des'].includes(link.target) && link.text);
+    const titleLink = textLinks[0] ?? card.links.find((link) => link.text);
+    const sourceLink = card.links.find((link) => (link.target === 'articleSourceJSX_title' || link.target === '.brand') && link.text);
     contents.push({
       rank: contents.length + 1,
       type,
       key: card.key,
       title: titleLink?.text ?? card.key,
       link: titleLink?.url ?? card.links[0]?.url ?? '',
+      source: sourceLink?.text,
+      description: textLinks.find((link) => link.text !== titleLink?.text)?.text,
     });
   }
 
