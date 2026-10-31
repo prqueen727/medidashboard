@@ -12,6 +12,7 @@ interface Clinic {
   magazine_url: string | null;
   homepage_url: string | null;
   name_aliases?: string[];
+  is_hidden?: boolean;
   keywords: string[];
 }
 
@@ -22,6 +23,7 @@ interface ClinicForm {
   magazineUrl: string;
   homepageUrl: string;
   nameAliases: string;
+  isHidden: boolean;
   keywords: string;
 }
 
@@ -195,7 +197,7 @@ function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null 
   );
 }
 
-const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', nameAliases: '', keywords: '' };
+const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', nameAliases: '', isHidden: false, keywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '', homepageUrl: '' };
 
 function bestRank(...ranks: (number | null | undefined)[]) {
@@ -211,6 +213,7 @@ function toClinicForm(clinic: Clinic): ClinicForm {
     magazineUrl: clinic.magazine_url ?? '',
     homepageUrl: clinic.homepage_url ?? '',
     nameAliases: (clinic.name_aliases ?? []).join(', '),
+    isHidden: clinic.is_hidden ?? false,
     keywords: clinic.keywords.join(', '),
   };
 }
@@ -480,14 +483,14 @@ export default function DashboardClient() {
     let active = true;
     void (async () => {
       try {
-        const { clinics: savedClinics } = await readJson<{ clinics: Clinic[] }>(await fetch('/api/clinics'));
+        // 관리자 잠금을 풀면 숨긴 병원까지 함께 받아온다
+        const { clinics: savedClinics } = await readJson<{ clinics: Clinic[] }>(await fetch('/api/clinics', {
+          headers: adminPassword ? { 'x-admin-password': encodeURIComponent(adminPassword) } : {},
+        }));
         if (!active) return;
         setClinics(savedClinics);
         if (!savedClinics.length) setActiveTab('manage');
-        if (savedClinics.length) {
-          setSelectedClinicId(savedClinics[0].id);
-          setForm(toClinicForm(savedClinics[0]));
-        }
+        setSelectedClinicId((previous) => savedClinics.some((clinic) => clinic.id === previous) ? previous : savedClinics[0]?.id ?? '');
       } catch (error) {
         if (active) setNotice(error instanceof Error ? error.message : '병원 목록을 불러오지 못했습니다.');
       } finally {
@@ -496,7 +499,7 @@ export default function DashboardClient() {
     })();
 
     return () => { active = false; };
-  }, []);
+  }, [adminPassword]);
 
   useEffect(() => {
     if (!selectedClinic) return;
@@ -562,6 +565,7 @@ export default function DashboardClient() {
         magazineUrl: form.magazineUrl.trim(),
         homepageUrl: form.homepageUrl.trim(),
         nameAliases: getKeywords(form.nameAliases),
+        isHidden: form.isHidden,
         keywords,
       };
       const { clinic } = await readJson<{ clinic: Clinic }>(await adminFetch('/api/clinics', {
@@ -810,7 +814,7 @@ export default function DashboardClient() {
           <select id="clinic-select" value={selectedClinicId} onChange={(event) => handleSelectClinic(event.target.value)} disabled={initializing || clinics.length === 0}>
             {clinics.length === 0 && <option value="">등록된 병원이 없습니다</option>}
             {clinics.length > 0 && !selectedClinicId && <option value="">새 병원 등록 중</option>}
-            {clinics.map((clinic) => <option value={clinic.id} key={clinic.id}>{clinic.name}</option>)}
+            {clinics.map((clinic) => <option value={clinic.id} key={clinic.id}>{clinic.name}{clinic.is_hidden ? ' (숨김)' : ''}</option>)}
           </select>
         </div>
         {notice && <p className="notice" role="status">{notice}</p>}
@@ -986,6 +990,10 @@ export default function DashboardClient() {
                   <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
                 </label>
               </div>
+              <label className="hide-toggle">
+                <input type="checkbox" checked={form.isHidden} onChange={(event) => setForm({ ...form, isHidden: event.target.checked })} />
+                <span>메인 &lsquo;분석할 병원&rsquo; 목록에서 숨기기 <small>관리자 잠금을 푼 경우에만 목록에 보입니다</small></span>
+              </label>
               <div className="settings-footer">
                 <p>공용 DB에 저장됩니다. 접속 시 선택 병원을 하루 한 번 자동 분석합니다.</p>
                 <button type="submit" className="primary-button" disabled={saving || loading}>

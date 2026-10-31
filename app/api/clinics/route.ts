@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/admin';
+import { isAdmin, requireAdmin } from '@/lib/admin';
 import { getSupabaseAdmin, getSupabaseConfigDiagnostics, getSupabaseErrorMessage } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,7 @@ interface ClinicInput {
   magazineUrl?: unknown;
   homepageUrl?: unknown;
   nameAliases?: unknown;
+  isHidden?: unknown;
   keywords?: unknown;
   id?: unknown;
 }
@@ -43,13 +44,15 @@ function parseClinic(input: ClinicInput) {
     return { error: '검색 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
   }
 
-  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, name_aliases: nameAliases, keywords } };
+  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, name_aliases: nameAliases, is_hidden: input.isHidden === true, keywords } };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.from('clinics').select('*').order('name');
+    // 숨긴 병원은 관리자 비밀번호가 있을 때만 목록에 포함
+    const query = supabase.from('clinics').select('*').order('name');
+    const { data, error } = await (await isAdmin(request) ? query : query.eq('is_hidden', false));
     if (error) throw error;
     return NextResponse.json({ clinics: data });
   } catch (error) {

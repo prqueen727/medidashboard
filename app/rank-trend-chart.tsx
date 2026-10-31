@@ -131,7 +131,8 @@ export default function RankTrendChart({ title, kicker = 'RANK TREND', data, opt
 
       <div className="trend-chart" ref={wrapRef}>
         {points.length === 0 ? <p className="no-results">아직 저장된 순위 기록이 없습니다.</p> : (
-          <svg width={width} height={HEIGHT} role="img" aria-label={title}>
+          // viewBox로 그려서 인쇄처럼 폭이 좁아져도 잘리지 않고 비율대로 줄어든다
+          <svg viewBox={`0 0 ${width} ${HEIGHT}`} width="100%" style={{ height: 'auto' }} role="img" aria-label={title}>
             {ticks.map((rank) => (
               <g key={rank}>
                 <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(rank)} y2={y(rank)} className="trend-grid" />

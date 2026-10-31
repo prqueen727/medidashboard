@@ -55,6 +55,9 @@ button { cursor: pointer; }
 .picker-card .clinic-picker select { min-width: 220px; }
 .picker-card .notice { margin: 12px 0 0; }
 .manage-card { margin-top: 18px; }
+.hide-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: #526170; font-size: 12px; font-weight: 650; cursor: pointer; }
+.hide-toggle input { width: 16px; height: 16px; accent-color: #159d72; }
+.hide-toggle small { margin-left: 6px; color: #99a2ac; font-weight: 400; }
 .lock-card h2 { margin: 6px 0 8px; font-size: 18px; letter-spacing: -.5px; }
 .lock-card p { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
 .lock-form { display: flex; flex-wrap: wrap; gap: 10px; }
