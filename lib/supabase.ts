@@ -27,6 +27,49 @@ function getLegacyKeyProjectRef(key: string) {
   }
 }
 
+export function getSupabaseConfigDiagnostics() {
+  const urlName = getRuntimeEnv('SUPABASE_URL') ? 'SUPABASE_URL' : 'NEXT_PUBLIC_SUPABASE_URL';
+  const keyName = getRuntimeEnv('SUPABASE_SECRET_KEY') ? 'SUPABASE_SECRET_KEY' : 'SUPABASE_SERVICE_ROLE_KEY';
+  const url = getRuntimeEnv(urlName);
+  const key = getRuntimeEnv(keyName);
+  const legacyPayload = key.split('.')[1];
+  let legacyRole = '';
+
+  if (legacyPayload) {
+    try {
+      const claims: unknown = JSON.parse(Buffer.from(legacyPayload, 'base64url').toString('utf8'));
+      if (claims && typeof claims === 'object' && 'role' in claims && typeof claims.role === 'string') {
+        legacyRole = claims.role;
+      }
+    } catch {
+      // The key format is reported below without logging the key itself.
+    }
+  }
+
+  return {
+    urlVariable: urlName,
+    projectHost: (() => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return 'invalid-url';
+      }
+    })(),
+    keyVariable: keyName,
+    keyFormat: key.startsWith('sb_secret_')
+      ? 'secret'
+      : key.startsWith('sb_publishable_')
+        ? 'publishable'
+        : legacyPayload
+          ? 'legacy-jwt'
+          : key
+            ? 'unknown'
+            : 'missing',
+    keyLength: key.length,
+    legacyRole: legacyRole || undefined,
+  };
+}
+
 export function getSupabaseAdmin() {
   const url = getRuntimeEnv('SUPABASE_URL') || getRuntimeEnv('NEXT_PUBLIC_SUPABASE_URL');
   const serviceRoleKey = getRuntimeEnv('SUPABASE_SECRET_KEY') || getRuntimeEnv('SUPABASE_SERVICE_ROLE_KEY');
