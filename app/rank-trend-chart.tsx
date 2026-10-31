@@ -81,6 +81,13 @@ export default function RankTrendChart({ title, kicker = 'RANK TREND', data, opt
   const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
   const x = (index: number) => MARGIN.left + (points.length > 1 ? (index / (points.length - 1)) * plotWidth : plotWidth / 2);
   const y = (rank: number) => MARGIN.top + ((rank - 1) / (maxRank - 1)) * plotHeight;
+  // 같은 날 같은 순위인 점은 겹치지 않게 좌우로 벌린다
+  const OVERLAP_GAP = 10;
+  const offsetX = (seriesIndex: number, index: number) => {
+    const rank = series[seriesIndex].ranks[index];
+    const sharing = series.flatMap((item, position) => item.ranks[index] === rank ? [position] : []);
+    return (sharing.indexOf(seriesIndex) - (sharing.length - 1) / 2) * OVERLAP_GAP;
+  };
   const tickStep = Math.ceil(maxRank / 8);
   const ticks = Array.from({ length: maxRank }, (_, index) => index + 1).filter((rank) => rank === 1 || rank % tickStep === 0);
 
@@ -140,7 +147,7 @@ export default function RankTrendChart({ title, kicker = 'RANK TREND', data, opt
               const segments: { x: number; y: number }[][] = [[]];
               item.ranks.forEach((rank, index) => {
                 if (rank === null) segments.push([]);
-                else segments[segments.length - 1].push({ x: x(index), y: y(rank) });
+                else segments[segments.length - 1].push({ x: x(index) + offsetX(seriesIndex, index), y: y(rank) });
               });
               return (
                 <g key={item.id}>
@@ -149,7 +156,7 @@ export default function RankTrendChart({ title, kicker = 'RANK TREND', data, opt
                   ))}
                   {item.ranks.map((rank, index) => rank !== null && (
                     <g key={index}>
-                      <circle cx={x(index)} cy={y(rank)} r={hoverIndex === index ? 5 : 4} fill="#fff" stroke={item.color} strokeWidth={2} />
+                      <circle cx={x(index) + offsetX(seriesIndex, index)} cy={y(rank)} r={hoverIndex === index ? 5 : 4} fill="#fff" stroke={item.color} strokeWidth={2} />
                       {/* 같은 날 같은 순위의 라벨은 한 번만 표시 */}
                       {!series.slice(0, seriesIndex).some((other) => other.ranks[index] === rank) && (
                         <text x={x(index)} y={y(rank) - 10} className="trend-value" textAnchor="middle">{rank}</text>
