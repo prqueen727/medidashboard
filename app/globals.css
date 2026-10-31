@@ -138,6 +138,28 @@ button { cursor: pointer; }
 .history-table th { padding: 10px 11px; border-bottom: 1px solid #e9edef; color: #8994a0; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .history-table td { padding: 10px 11px; border-bottom: 1px solid #f0f2f4; color: #596774; font-size: 11px; white-space: nowrap; }
 .history-table tbody tr:last-child td { border-bottom: 0; }
+.trend-section { margin-top: 30px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 7px 26px rgb(34 51 67 / 3%); }
+.trend-section .history-heading { margin-bottom: 4px; }
+.trend-metric { display: flex; padding: 3px; border-radius: 8px; background: #f0f3f5; }
+.trend-metric button { padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: #748092; font-size: 11px; font-weight: 650; cursor: pointer; }
+.trend-metric button.active { background: #fff; color: #293a4a; box-shadow: 0 1px 3px rgb(34 51 67 / 12%); }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 6px; }
+.trend-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid #e5e9ec; border-radius: 999px; background: #fff; color: #8994a0; font-size: 11px; cursor: pointer; }
+.trend-chip.active { border-color: #d5dce1; color: #293a4a; font-weight: 600; }
+.trend-chip:disabled { cursor: not-allowed; opacity: .5; }
+.trend-swatch { width: 10px; height: 10px; border: 1px solid #c9d1d7; border-radius: 50%; }
+.trend-chip.active .trend-swatch { border: 0; }
+.trend-chart { position: relative; overflow: hidden; }
+.trend-chart svg { display: block; }
+.trend-grid { stroke: #eef1f3; stroke-dasharray: 4 4; }
+.trend-crosshair { stroke: #c9d1d7; }
+.trend-axis { fill: #8994a0; font-size: 11px; }
+.trend-value { fill: #3d4c59; font-size: 11px; font-weight: 650; }
+.trend-tooltip { position: absolute; display: grid; min-width: 170px; gap: 5px; padding: 10px 12px; border: 1px solid #e5e9ec; border-radius: 8px; background: #fff; box-shadow: 0 6px 20px rgb(34 51 67 / 12%); pointer-events: none; font-size: 11px; }
+.trend-tooltip strong { color: #293a4a; }
+.trend-tooltip span { display: flex; align-items: center; gap: 6px; color: #596774; }
+.trend-tooltip i { width: 8px; height: 8px; border-radius: 50%; }
+.trend-tooltip b { margin-left: auto; padding-left: 10px; color: #293a4a; }
 .history-table tr.selected-history td { background: #f0f8f4; }
 .table-mine-tag { margin-left: 6px; vertical-align: middle; }
 .date-link { padding: 0; border: 0; background: none; color: #148f69; font-size: 11px; font-weight: 700; }
@@ -172,7 +194,7 @@ button { cursor: pointer; }
   .tab-index { display: none; }
   .rank-pair { grid-template-columns: 1fr; }
   .list-card { padding: 18px 15px; }
-  .history-section { padding: 17px 13px; }
+  .history-section, .trend-section { padding: 17px 13px; }
   .history-heading { align-items: flex-start; flex-direction: column; }
 }
 
@@ -185,7 +207,8 @@ button { cursor: pointer; }
   .header-actions, .no-print, .dashboard-footer, .row-arrow { display: none !important; }
   .settings-card { display: none !important; }
   .results-section { margin-top: 0; }
-  .metric-card, .list-card, .history-section { break-inside: avoid; box-shadow: none; }
+  .metric-card, .list-card, .history-section, .trend-section { break-inside: avoid; box-shadow: none; }
+  .trend-metric, .trend-tooltip { display: none !important; }
   .rank-pair { break-inside: avoid; }
   .history-section { margin-top: 20px; }
   .history-table th, .history-table td { padding: 7px; font-size: 9px; }

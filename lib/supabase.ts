@@ -103,6 +103,9 @@ export function getSupabaseErrorMessage(error: unknown, fallback: string) {
   if (/invalid api key/i.test(message)) {
     return 'Supabase가 서버 API 키를 거부했습니다. Railway의 SUPABASE_URL과 SUPABASE_SECRET_KEY가 같은 프로젝트의 현재 활성 키인지 확인해주세요.';
   }
+  if (code === '42501') {
+    return 'Supabase 테이블 접근 권한이 없습니다. Railway의 SUPABASE_SECRET_KEY가 secret(service_role) 키인지 확인하고, 최신 supabase/schema.sql의 grant 구문을 SQL Editor에서 실행해주세요. (42501)';
+  }
   if (code === '42P01' || code === 'PGRST205') {
     return `Supabase에서 필요한 테이블을 찾지 못했습니다. 최신 supabase/schema.sql을 SQL Editor에서 실행해주세요. (${code})`;
   }

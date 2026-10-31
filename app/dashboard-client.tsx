@@ -1,6 +1,8 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ContentItem, PlaceItem, getAccountKey } from '@/lib/naver-search';
+import RankTrendChart from './rank-trend-chart';
 
 interface Clinic {
   id: string;
@@ -38,21 +40,6 @@ interface PlaceRank {
   found: boolean;
 }
 
-interface BlogResult {
-  rank: number;
-  title: string;
-  link: string;
-  bloggername: string;
-  postdate: string;
-}
-
-interface IntegratedResult {
-  rank: number;
-  title: string;
-  link: string;
-  placeId?: string;
-}
-
 interface Competitor {
   rank: number;
   name: string;
@@ -65,21 +52,35 @@ interface TrackedCompetitor {
   name: string;
   placeId: string;
   placeRank: number | null;
-  blogRank: number | null;
   integratedRank: number | null;
 }
 
 interface KeywordResult {
   keyword: string;
   placeRank?: PlaceRank;
-  blogRank?: number | null;
-  blogResults?: BlogResult[];
   integratedRank?: number | null;
-  integratedResults?: IntegratedResult[];
+  places?: PlaceItem[];
+  contents?: ContentItem[];
   trackedCompetitors?: TrackedCompetitor[];
-  blogError?: string;
   integratedError?: string;
 }
+
+interface KeywordSearchResult {
+  keyword: string;
+  places: PlaceItem[];
+  contents: ContentItem[];
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null }>;
+  error?: string;
+}
+
+const CONTENT_TYPE_LABELS: Record<ContentItem['type'], string> = {
+  blog: '블로그',
+  cafe: '카페',
+  post: '포스트',
+  influencer: '인플루언서',
+  kin: '지식iN',
+  youtube: '유튜브',
+};
 
 interface Analysis {
   placeName?: string;
@@ -98,7 +99,7 @@ interface Snapshot {
   created_at: string;
 }
 
-type Tab = 'place' | 'blog' | 'competitor';
+type Tab = 'place' | 'content' | 'competitor';
 
 const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', keywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '' };
@@ -162,135 +163,60 @@ export default function DashboardClient() {
     setAnalysis(null);
 
     try {
-      const placeRequest = fetch('/api/search', {
+      const { results } = await readJson<{ results: KeywordSearchResult[] }>(await fetch('/api/integrated-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: clinic.keywords, placeUrl: placeId }),
-      }).then((response) => readJson<{
-        success: boolean;
-        placeName?: string;
-        keywordRanks?: PlaceRank[];
-        message: string;
-      }>(response));
+        body: JSON.stringify({
+          keywords: clinic.keywords,
+          targets: [
+            { id: 'clinic', placeId, blogUrl: clinic.blog_url },
+            ...competitorList.map((competitor) => ({ id: competitor.id, placeId: competitor.place_id, blogUrl: competitor.blog_url })),
+          ],
+        }),
+      }));
 
-      const competitorRequest = competitorList.length
-        ? Promise.resolve({ results: [] as Competitor[] })
-        : fetch('/api/competitors', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: clinic.keywords[0], placeId, topN: 20 }),
-        }).then((response) => readJson<{ results: Competitor[] }>(response));
-
-      const trackedRankRequest = competitorList.length
-        ? fetch('/api/competitor-ranks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            keywords: clinic.keywords,
-            targets: [
-              { id: placeId, name: clinic.name },
-              ...competitorList.map((competitor) => ({ id: competitor.place_id, name: competitor.name })),
-            ],
-          }),
-        }).then((response) => readJson<{ rankings: Record<string, Record<string, number | null>> }>(response))
-        : Promise.resolve<{ rankings: Record<string, Record<string, number | null>> }>({ rankings: {} });
-
-      const searchRequests = clinic.keywords.map(async (keyword): Promise<KeywordResult> => {
-        const [blogResponse, integratedResponse] = await Promise.allSettled([
-          fetch(`/api/blog-search?keyword=${encodeURIComponent(keyword)}&display=100`).then((response) =>
-            readJson<{ results: BlogResult[] }>(response)),
-          fetch('/api/integrated-search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyword, placeId, clinicName: clinic.name }),
-          }).then((response) => readJson<{ rank: number | null; results: (IntegratedResult & { placeId?: string })[] }>(response)),
-        ]);
-
-        const result: KeywordResult = { keyword };
-        result.trackedCompetitors = competitorList.map((competitor) => ({
-          id: competitor.id,
-          name: competitor.name,
-          placeId: competitor.place_id,
-          placeRank: null,
-          blogRank: null,
-          integratedRank: null,
-        }));
-        if (blogResponse.status === 'fulfilled') {
-          result.blogResults = blogResponse.value.results;
-          result.blogRank = result.blogResults.find((item) =>
-            item.link.toLowerCase().includes(clinic.blog_url.trim().toLowerCase()))?.rank ?? null;
-          result.trackedCompetitors.forEach((competitor) => {
-            const savedCompetitor = competitorList.find((item) => item.id === competitor.id);
-            if (savedCompetitor) {
-              competitor.blogRank = result.blogResults?.find((item) =>
-                item.link.toLowerCase().includes(savedCompetitor.blog_url.trim().toLowerCase()))?.rank ?? null;
-            }
-          });
-        } else {
-          result.blogError = blogResponse.reason instanceof Error ? blogResponse.reason.message : '블로그 검색에 실패했습니다.';
-        }
-
-        if (integratedResponse.status === 'fulfilled') {
-          result.integratedRank = integratedResponse.value.rank;
-          result.integratedResults = integratedResponse.value.results;
-        } else {
-          result.integratedError = integratedResponse.reason instanceof Error ? integratedResponse.reason.message : '통합검색에 실패했습니다.';
-        }
-        const integratedRanks = new Map((integratedResponse.status === 'fulfilled' ? integratedResponse.value.results : [])
-          .filter((item): item is IntegratedResult & { placeId: string } => Boolean(item.placeId))
-          .map((item) => [item.placeId, item.rank]));
-        result.trackedCompetitors?.forEach((competitor) => {
-          competitor.integratedRank = integratedRanks.get(competitor.placeId) ?? null;
-        });
-        return result;
+      const keywordResults = results.map((search): KeywordResult => {
+        const mine = search.ranks.clinic;
+        return {
+          keyword: search.keyword,
+          placeRank: search.error ? undefined : {
+            keyword: search.keyword,
+            rank: mine?.placeRank ?? null,
+            totalResults: search.places.length,
+            found: Boolean(mine?.placeRank),
+          },
+          integratedRank: mine?.contentRank ?? null,
+          places: search.places,
+          contents: search.contents,
+          integratedError: search.error,
+          trackedCompetitors: competitorList.map((competitor) => ({
+            id: competitor.id,
+            name: competitor.name,
+            placeId: competitor.place_id,
+            placeRank: search.ranks[competitor.id]?.placeRank ?? null,
+            integratedRank: search.ranks[competitor.id]?.contentRank ?? null,
+          })),
+        };
       });
 
-      const [placeResult, competitorResult, trackedRanksResult, ...keywordResults] = await Promise.allSettled([
-        placeRequest,
-        competitorRequest,
-        trackedRankRequest,
-        ...searchRequests,
-      ]);
-
-      let placeName: string | undefined;
-      if (placeResult.status === 'fulfilled') {
-        placeName = placeResult.value.placeName;
-        const placeRanks = new Map((placeResult.value.keywordRanks ?? []).map((item) => [item.keyword, item]));
-        keywordResults.forEach((result) => {
-          if (result.status === 'fulfilled') result.value.placeRank = placeRanks.get(result.value.keyword);
-        });
-      } else {
-        setNotice(placeResult.reason instanceof Error ? placeResult.reason.message : '플레이스 순위 검색에 실패했습니다.');
-      }
-
-      if (trackedRanksResult.status === 'fulfilled') {
-        keywordResults.forEach((result) => {
-          if (result.status !== 'fulfilled') return;
-          const keywordRanks = trackedRanksResult.value.rankings[result.value.keyword] ?? {};
-          result.value.trackedCompetitors?.forEach((competitor) => {
-            competitor.placeRank = keywordRanks[competitor.placeId] ?? null;
-          });
-        });
-      } else if (competitorList.length) {
-        console.error('Tracked competitor rank search failed:', trackedRanksResult.reason);
-      }
-
+      const firstPlaces = keywordResults[0]?.places ?? [];
       const result: Analysis = {
-        placeName,
-        keywordResults: keywordResults.flatMap((item) => item.status === 'fulfilled' ? [item.value] : []),
-        competitors: competitorResult.status === 'fulfilled' ? competitorResult.value.results : [],
-        competitorError: competitorResult.status === 'rejected'
-          ? competitorResult.reason instanceof Error ? competitorResult.reason.message : '경쟁 병원 검색에 실패했습니다.'
-          : undefined,
-        trackedRankError: trackedRanksResult.status === 'rejected'
-          ? trackedRanksResult.reason instanceof Error ? trackedRanksResult.reason.message : '등록한 경쟁 병원 순위 검색에 실패했습니다.'
-          : undefined,
+        placeName: firstPlaces.find((place) => place.placeId === placeId)?.name,
+        keywordResults,
+        competitors: firstPlaces.map((place) => ({
+          rank: place.rank,
+          name: place.isAd ? `${place.name} (광고)` : place.name,
+          placeId: place.placeId,
+          href: `https://map.naver.com/p/entry/place/${place.placeId}`,
+        })),
         completedAt: new Date().toLocaleString('ko-KR'),
       };
 
       setAnalysis(result);
       setSelectedDate('today');
-      if (placeResult.status === 'rejected') return;
+      const failed = keywordResults.filter((item) => item.integratedError);
+      if (failed.length) setNotice(failed[0].integratedError ?? '일부 키워드 검색에 실패했습니다.');
+      if (failed.length === keywordResults.length) return;
 
       const { snapshot } = await readJson<{ snapshot: Snapshot }>(await fetch(`/api/clinics/${clinic.id}/snapshots`, {
         method: 'POST',
@@ -530,7 +456,7 @@ export default function DashboardClient() {
         <div>
           <div className="eyebrow"><span className="live-dot" /> NAVER SEARCH INSIGHT</div>
           <h1>병원 검색 순위 대시보드</h1>
-          <p>플레이스 · 블로그 · 경쟁 병원의 검색 현황을 한눈에 확인하세요.</p>
+          <p>플레이스 · 통합검색 콘텐츠 · 경쟁 병원의 검색 현황을 한눈에 확인하세요.</p>
         </div>
         <div className="header-actions">
           <div className="header-status">
@@ -611,7 +537,7 @@ export default function DashboardClient() {
         <div className="results-toolbar no-print">
           <div className="tabs" role="tablist" aria-label="분석 결과">
             <button role="tab" aria-selected={activeTab === 'place'} className={activeTab === 'place' ? 'tab active' : 'tab'} onClick={() => setActiveTab('place')}><span className="tab-index">01</span> 플레이스 순위</button>
-            <button role="tab" aria-selected={activeTab === 'blog'} className={activeTab === 'blog' ? 'tab active' : 'tab'} onClick={() => setActiveTab('blog')}><span className="tab-index">02</span> 블로그 순위</button>
+            <button role="tab" aria-selected={activeTab === 'content'} className={activeTab === 'content' ? 'tab active' : 'tab'} onClick={() => setActiveTab('content')}><span className="tab-index">02</span> 통합검색 콘텐츠</button>
             <button role="tab" aria-selected={activeTab === 'competitor'} className={activeTab === 'competitor' ? 'tab active' : 'tab'} onClick={() => setActiveTab('competitor')}><span className="tab-index">03</span> 경쟁 병원</button>
           </div>
           <label className="history-range">기록 기간
@@ -633,36 +559,41 @@ export default function DashboardClient() {
                   <div className="metric-topline"><span>네이버 플레이스</span><span className="metric-mark green">P</span></div>
                   <h3>{item.keyword}</h3>
                   <Rank value={item.placeRank?.rank} />
-                  <p>{item.placeRank?.found ? `${item.placeRank.totalResults}개 결과에서 확인` : item.placeRank ? '수집된 결과에서 찾지 못했습니다' : '순위 데이터를 확인할 수 없습니다'}</p>
+                  <p>{item.integratedError ?? (item.placeRank?.found
+                    ? `플레이스 영역 ${item.placeRank.totalResults}곳 중 (광고 ${item.places?.filter((place) => place.isAd).length ?? 0}곳 포함)`
+                    : item.placeRank ? (item.placeRank.totalResults ? '통합검색 플레이스 영역에 노출되지 않았습니다' : '통합검색에 플레이스 영역이 없습니다') : '순위 데이터를 확인할 수 없습니다')}</p>
                 </article>
                 <article className="metric-card">
                   <div className="metric-topline"><span>네이버 통합검색</span><span className="metric-mark navy">N</span></div>
                   <h3>{item.keyword}</h3>
                   <Rank value={item.integratedRank} />
-                  <p>{item.integratedError ?? (item.integratedRank ? '확인된 플레이스 노출 순서' : '확인된 플레이스 노출 결과에서 찾지 못했습니다')}</p>
+                  <p>{item.integratedError ?? (item.integratedRank ? `1페이지 콘텐츠 ${item.contents?.length ?? 0}개 중` : '1페이지 콘텐츠에서 블로그를 찾지 못했습니다')}</p>
                 </article>
               </div>
             ))}
             {displayedAnalysis.placeName && <p className="result-footnote">대상 플레이스: {displayedAnalysis.placeName}</p>}
-            <p className="result-footnote">통합검색 순위는 페이지에서 확인 가능한 네이버 플레이스 결과의 노출 순서 기준이며, 통합검색 전체의 고정 순위와 다를 수 있습니다.</p>
+            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역의 광고 포함 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 등록한 블로그의 순서입니다.</p>
           </div>
         )}
 
-        {!loading && displayedAnalysis && activeTab === 'blog' && (
+        {!loading && displayedAnalysis && activeTab === 'content' && (
           <div className="keyword-panels">
-            {displayedAnalysis.keywordResults.map((item) => (
-              <article className="list-card" key={item.keyword}>
-                <div className="list-heading"><div><span className="section-kicker">BLOG SEARCH</span><h3>{item.keyword}</h3></div><Rank value={item.blogRank} /></div>
-                {item.blogResults?.length ? <div className="result-list">{item.blogResults.slice(0, 10).map((blog) => (
-                  <a className="result-row" key={`${item.keyword}-${blog.rank}-${blog.link}`} href={blog.link} target="_blank" rel="noreferrer">
-                    <span className="row-rank">{String(blog.rank).padStart(2, '0')}</span>
-                    <span className="row-main"><strong>{blog.title}</strong><small>{blog.bloggername || '네이버 블로그'}{blog.postdate ? ` · ${blog.postdate}` : ''}</small></span>
-                    <span className="row-arrow">↗</span>
-                  </a>
-                ))}</div> : <p className="no-results">{item.blogError ?? '블로그 검색 결과가 없습니다.'}</p>}
-              </article>
-            ))}
-            <p className="result-footnote">입력한 블로그 주소가 검색 결과에 있으면 해당 글의 순위를 표시합니다.</p>
+            {displayedAnalysis.keywordResults.map((item) => {
+              const blogKey = selectedClinic ? getAccountKey(selectedClinic.blog_url) : '';
+              return (
+                <article className="list-card" key={item.keyword}>
+                  <div className="list-heading"><div><span className="section-kicker">INTEGRATED SEARCH</span><h3>{item.keyword}</h3></div><Rank value={item.integratedRank} /></div>
+                  {item.contents?.length ? <div className="result-list">{item.contents.slice(0, 15).map((content) => (
+                    <a className="result-row" key={`${item.keyword}-${content.rank}`} href={content.link} target="_blank" rel="noreferrer">
+                      <span className="row-rank">{String(content.rank).padStart(2, '0')}</span>
+                      <span className="row-main"><strong>{content.title}{content.key === blogKey && <span className="mine-tag">내 블로그</span>}</strong><small>{CONTENT_TYPE_LABELS[content.type]} · {content.key}</small></span>
+                      <span className="row-arrow">↗</span>
+                    </a>
+                  ))}</div> : <p className="no-results">{item.integratedError ?? '통합검색 콘텐츠 결과가 없습니다.'}</p>}
+                </article>
+              );
+            })}
+            <p className="result-footnote">통합검색 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠의 노출 순서입니다. 1페이지에 없으면 순위권 외로 표시합니다.</p>
           </div>
         )}
 
@@ -672,10 +603,10 @@ export default function DashboardClient() {
             {displayedAnalysis.keywordResults.some((item) => (item.trackedCompetitors?.length ?? 0) > 0) ? (
               <div className="tracked-rank-table-wrap">
                 <table className="history-table">
-                  <thead><tr><th>검색 키워드</th><th>병원</th><th>플레이스</th><th>블로그</th><th>통합검색</th></tr></thead>
+                  <thead><tr><th>검색 키워드</th><th>병원</th><th>플레이스</th><th>통합검색</th></tr></thead>
                   <tbody>{displayedAnalysis.keywordResults.flatMap((item) => {
                     const rows = [
-                      { id: selectedClinic?.id ?? 'clinic', name: selectedClinic?.name ?? '내 병원', placeRank: item.placeRank?.rank ?? null, blogRank: item.blogRank ?? null, integratedRank: item.integratedRank ?? null },
+                      { id: selectedClinic?.id ?? 'clinic', name: selectedClinic?.name ?? '내 병원', placeRank: item.placeRank?.rank ?? null, integratedRank: item.integratedRank ?? null },
                       ...(item.trackedCompetitors ?? []),
                     ];
                     return rows.map((competitor, index) => (
@@ -683,7 +614,6 @@ export default function DashboardClient() {
                         {index === 0 && <td rowSpan={rows.length}>{item.keyword}</td>}
                         <td>{competitor.name}{index === 0 && <span className="mine-tag table-mine-tag">내 병원</span>}</td>
                         <td>{competitor.placeRank ? `${competitor.placeRank}위` : '순위권 외'}</td>
-                        <td>{competitor.blogRank ? `${competitor.blogRank}위` : '순위권 외'}</td>
                         <td>{competitor.integratedRank ? `${competitor.integratedRank}위` : '순위권 외'}</td>
                       </tr>
                     ));
@@ -699,9 +629,11 @@ export default function DashboardClient() {
               </div>;
             })}</div> : <p className="no-results">{trackedCompetitors.length ? '등록한 경쟁 병원 정보가 아직 분석 결과에 없습니다. 다시 분석해주세요.' : displayedAnalysis.competitorError ?? '경쟁 병원을 등록하면 키워드별 순위를 비교할 수 있습니다.'}</p>}
             {displayedAnalysis.trackedRankError && <p className="notice" role="status">{displayedAnalysis.trackedRankError}</p>}
-            <p className="result-footnote">첫 번째 키워드의 네이버 지도 검색 결과 기준입니다.</p>
+            <p className="result-footnote">첫 번째 키워드의 통합검색 플레이스 영역 기준입니다.</p>
           </div>
         )}
+
+        {selectedClinic && <RankTrendChart snapshots={snapshots} keywords={selectedClinic.keywords} />}
 
         <section className="history-section">
           <div className="history-heading">
@@ -713,7 +645,7 @@ export default function DashboardClient() {
           {selectedClinic && filteredSnapshots.length > 0 && (
             <div className="history-table-wrap">
               <table className="history-table">
-                <thead><tr><th>분석 날짜</th><th>검색 키워드</th><th>플레이스</th><th>통합검색</th><th>블로그</th></tr></thead>
+                <thead><tr><th>분석 날짜</th><th>검색 키워드</th><th>플레이스</th><th>통합검색</th></tr></thead>
                 <tbody>
                   {filteredSnapshots.flatMap((snapshot) => snapshot.payload.keywordResults.map((item, index) => (
                     <tr key={`${snapshot.id}-${item.keyword}`} className={snapshot.snapshot_date === selectedDate ? 'selected-history' : ''}>
@@ -721,7 +653,6 @@ export default function DashboardClient() {
                       <td>{item.keyword}</td>
                       <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
                       <td>{item.integratedRank ? `${item.integratedRank}위` : '순위권 외'}</td>
-                      <td>{item.blogRank ? `${item.blogRank}위` : '순위권 외'}</td>
                     </tr>
                   )))}
                 </tbody>

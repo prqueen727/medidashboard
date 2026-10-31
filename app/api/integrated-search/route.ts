@@ -1,89 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-interface IntegratedResult {
-  rank: number;
-  title: string;
-  link: string;
-  placeId: string;
-}
+import { ContentItem, PlaceItem, fetchIntegratedSearch, getAccountKey, parseContents, parsePlaces } from '@/lib/naver-search';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
+
+interface Target {
+  id: string;
+  placeId: string;
+  blogUrl: string;
+}
+
+interface KeywordSearchResult {
+  keyword: string;
+  places: PlaceItem[];
+  contents: ContentItem[];
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null }>;
+  error?: string;
+}
+
+// 짧은 시간에 연속 요청하면 네이버가 검색을 제한하므로 키워드 사이에 간격을 둔다
+const REQUEST_INTERVAL_MS = 1500;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isTarget(value: unknown): value is Target {
+  if (!value || typeof value !== 'object') return false;
+  const target = value as Record<string, unknown>;
+  return typeof target.id === 'string' && typeof target.placeId === 'string' && typeof target.blogUrl === 'string';
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const keyword = typeof body.keyword === 'string' ? body.keyword.trim() : '';
-    const placeId = typeof body.placeId === 'string' ? body.placeId.trim() : '';
-    const clinicName = typeof body.clinicName === 'string' ? body.clinicName.trim() : '';
+    const keywords: string[] = Array.isArray(body.keywords)
+      ? [...new Set(body.keywords.filter((item: unknown): item is string => typeof item === 'string')
+        .map((item: string) => item.trim()).filter(Boolean))] as string[]
+      : [];
+    const targets: Target[] = (Array.isArray(body.targets) ? body.targets as unknown[] : []).filter(isTarget);
 
-    if (!keyword || !placeId || !/^\d+$/.test(placeId)) {
-      return NextResponse.json({ error: '키워드와 올바른 플레이스 ID를 입력해주세요.' }, { status: 400 });
+    if (!keywords.length || keywords.length > 20 || !targets.length || targets.length > 30) {
+      return NextResponse.json({ error: '키워드 1~20개와 순위를 확인할 병원 1~30곳을 입력해주세요.' }, { status: 400 });
     }
 
-    const response = await fetch(`https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      return NextResponse.json({ error: `네이버 통합검색 오류: ${response.status}` }, { status: 502 });
+    const results: KeywordSearchResult[] = [];
+    for (const [index, keyword] of keywords.entries()) {
+      if (index > 0) await delay(REQUEST_INTERVAL_MS);
+      try {
+        const html = await fetchIntegratedSearch(keyword);
+        const places = parsePlaces(html);
+        const contents = parseContents(html);
+        const ranks = Object.fromEntries(targets.map((target) => {
+          const blogKey = getAccountKey(target.blogUrl);
+          return [target.id, {
+            placeRank: places.find((place) => place.placeId === target.placeId)?.rank ?? null,
+            contentRank: blogKey ? contents.find((content) => content.key === blogKey)?.rank ?? null : null,
+          }];
+        }));
+        results.push({ keyword, places, contents, ranks });
+      } catch (error) {
+        console.error(`Integrated search error (${keyword}):`, error);
+        results.push({
+          keyword,
+          places: [],
+          contents: [],
+          ranks: {},
+          error: error instanceof Error ? error.message : '네이버 통합검색 중 오류가 발생했습니다.',
+        });
+      }
     }
 
-    const html = (await response.text()).replace(/&amp;/g, '&');
-    const results = extractPlaceResults(html);
-    const matchById = results.find((result) => result.placeId === placeId);
-    const matchByName = clinicName
-      ? results.find((result) => result.title.replace(/\s/g, '').includes(clinicName.replace(/\s/g, '')))
-      : undefined;
-    const target = matchById ?? matchByName;
-
-    return NextResponse.json({
-      rank: target?.rank ?? null,
-      results,
-    });
+    return NextResponse.json({ results });
   } catch (error) {
     console.error('Integrated search error:', error);
     return NextResponse.json({ error: '네이버 통합검색 중 오류가 발생했습니다.' }, { status: 502 });
   }
-}
-
-function extractPlaceResults(html: string): IntegratedResult[] {
-  const results: IntegratedResult[] = [];
-  const seen = new Set<string>();
-  const anchorPattern = /<a\b([^>]*?)href=(?:"([^"]+)"|'([^']+)')([^>]*)>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = anchorPattern.exec(html)) !== null) {
-    const link = match[2] ?? match[3] ?? '';
-    const placeId = link.match(/\/place\/(\d+)/)?.[1];
-    if (!placeId || seen.has(placeId)) continue;
-
-    const title = stripTags(match[5]);
-    if (!title) continue;
-
-    seen.add(placeId);
-    results.push({
-      rank: results.length + 1,
-      title,
-      link: link.startsWith('http') ? link : `https://map.naver.com${link}`,
-      placeId,
-    });
-  }
-
-  return results;
-}
-
-function stripTags(value: string) {
-  return value
-    .replace(/<[^>]*>/g, '')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }

@@ -41,3 +41,6 @@ alter table public.clinic_competitors enable row level security;
 revoke all on public.clinics from anon, authenticated;
 revoke all on public.rank_snapshots from anon, authenticated;
 revoke all on public.clinic_competitors from anon, authenticated;
+
+grant usage on schema public to service_role;
+grant all on public.clinics, public.rank_snapshots, public.clinic_competitors to service_role;
