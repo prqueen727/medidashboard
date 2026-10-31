@@ -9,6 +9,7 @@ interface ClinicInput {
   blogUrl?: unknown;
   magazineUrl?: unknown;
   homepageUrl?: unknown;
+  nameAliases?: unknown;
   keywords?: unknown;
   id?: unknown;
 }
@@ -20,6 +21,9 @@ function parseClinic(input: ClinicInput) {
   const blogUrl = typeof input.blogUrl === 'string' ? input.blogUrl.trim() : '';
   const magazineUrl = typeof input.magazineUrl === 'string' ? input.magazineUrl.trim() : '';
   const homepageUrl = typeof input.homepageUrl === 'string' ? input.homepageUrl.trim() : '';
+  const nameAliases = Array.isArray(input.nameAliases)
+    ? [...new Set(input.nameAliases.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
+    : [];
   const keywords = Array.isArray(input.keywords)
     ? [...new Set(input.keywords.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
     : typeof input.keywords === 'string'
@@ -31,11 +35,14 @@ function parseClinic(input: ClinicInput) {
   if (!blogUrl || blogUrl.length > 500) return { error: '공식 블로그 주소를 입력해주세요.' };
   if (magazineUrl.length > 500) return { error: '웹 매거진 주소는 500자 이내로 입력해주세요.' };
   if (homepageUrl.length > 500) return { error: '홈페이지 주소는 500자 이내로 입력해주세요.' };
+  if (nameAliases.length > 10 || nameAliases.some((alias) => alias.length > 100)) {
+    return { error: '검색용 상호명은 10개까지, 각 100자 이내로 입력해주세요.' };
+  }
   if (keywords.length === 0 || keywords.length > 20 || keywords.some((keyword) => keyword.length > 100)) {
     return { error: '검색 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
   }
 
-  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, keywords } };
+  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, name_aliases: nameAliases, keywords } };
 }
 
 export async function GET() {

@@ -12,6 +12,7 @@ create table if not exists public.clinics (
 
 alter table public.clinics add column if not exists magazine_url text;
 alter table public.clinics add column if not exists homepage_url text;
+alter table public.clinics add column if not exists name_aliases text[] not null default '{}';
 
 create table if not exists public.rank_snapshots (
   id uuid primary key default gen_random_uuid(),

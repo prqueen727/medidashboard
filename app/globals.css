@@ -161,6 +161,7 @@ button { cursor: pointer; }
 .history-open { margin-top: 12px; }
 .period-table th, .period-table td { text-align: center; }
 .period-table th:first-child, .period-table td:first-child { text-align: left; }
+.settings-grid .wide { grid-column: 1 / -1; }
 .dual-rank { display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .dual-rank > div { display: flex; flex-direction: column; }
 .dual-rank small { color: #8994a0; font-size: 10px; font-weight: 650; }

@@ -11,6 +11,7 @@ interface Clinic {
   blog_url: string;
   magazine_url: string | null;
   homepage_url: string | null;
+  name_aliases?: string[];
   keywords: string[];
 }
 
@@ -20,6 +21,7 @@ interface ClinicForm {
   blogUrl: string;
   magazineUrl: string;
   homepageUrl: string;
+  nameAliases: string;
   keywords: string;
 }
 
@@ -153,11 +155,18 @@ function normalizeName(value: string) {
   return value.toLowerCase().replace(/[\s·.,()[\]-]/g, '');
 }
 
-// 통합검색 콘텐츠 중 블로그명·제목·설명에 상호명이 들어간 항목
-function getNameMentions(item: KeywordResult, name: string) {
-  const target = normalizeName(name);
-  return target ? (item.contents ?? []).filter((content) =>
-    [content.source, content.title, content.description].some((text) => text && normalizeName(text).includes(target))) : [];
+// 통합검색 콘텐츠 중 블로그명·제목·설명에 상호명(또는 별칭)이 들어간 항목
+function getNameMentions(item: KeywordResult, names: string[]) {
+  const targets = names.map(normalizeName).filter(Boolean);
+  return targets.length ? (item.contents ?? []).filter((content) =>
+    [content.source, content.title, content.description].some((text) => {
+      const normalized = text ? normalizeName(text) : '';
+      return normalized && targets.some((target) => normalized.includes(target));
+    })) : [];
+}
+
+function clinicNames(clinic: Clinic) {
+  return [clinic.name, ...(clinic.name_aliases ?? [])];
 }
 
 // 상호명 노출 개수를 내 병원과 비교한 차이
@@ -186,7 +195,7 @@ function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null 
   );
 }
 
-const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', keywords: '' };
+const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', nameAliases: '', keywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '', homepageUrl: '' };
 
 function bestRank(...ranks: (number | null | undefined)[]) {
@@ -201,6 +210,7 @@ function toClinicForm(clinic: Clinic): ClinicForm {
     blogUrl: clinic.blog_url,
     magazineUrl: clinic.magazine_url ?? '',
     homepageUrl: clinic.homepage_url ?? '',
+    nameAliases: (clinic.name_aliases ?? []).join(', '),
     keywords: clinic.keywords.join(', '),
   };
 }
@@ -478,6 +488,7 @@ export default function DashboardClient() {
         blogUrl: form.blogUrl.trim(),
         magazineUrl: form.magazineUrl.trim(),
         homepageUrl: form.homepageUrl.trim(),
+        nameAliases: getKeywords(form.nameAliases),
         keywords,
       };
       const { clinic } = await readJson<{ clinic: Clinic }>(await fetch('/api/clinics', {
@@ -612,12 +623,12 @@ export default function DashboardClient() {
 
   const renderMentions = (analysis: Analysis) => {
     const clinics = [
-      { id: 'clinic', name: selectedClinic?.name ?? '' },
-      ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name })),
+      { id: 'clinic', name: selectedClinic?.name ?? '', names: selectedClinic ? clinicNames(selectedClinic) : [] },
+      ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name, names: [competitor.name] })),
     ];
     const rows = analysis.keywordResults.map((item) => ({
       item,
-      mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.name)) : null,
+      mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.names)) : null,
     }));
     const totals = clinics.map((_, index) => rows.reduce((sum, row) => sum + (row.mentions?.[index].length ?? 0), 0));
     const cellTitle = (mentions: ContentItem[]) => mentions.map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined;
@@ -757,6 +768,10 @@ export default function DashboardClient() {
               <input value={form.homepageUrl} onChange={(event) => setForm({ ...form, homepageUrl: event.target.value })} placeholder="홈페이지 주소 (예: www.example.com)" />
             </label>
             <label>
+              <span>검색용 상호명 <small>선택 · 쉼표로 구분 · 상호명 개수를 셀 때 병원명과 함께 찾습니다</small></span>
+              <input value={form.nameAliases} onChange={(event) => setForm({ ...form, nameAliases: event.target.value })} placeholder="예: 필한방병원, 필한의원" />
+            </label>
+            <label className="wide">
               <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
               <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
             </label>
@@ -825,8 +840,8 @@ export default function DashboardClient() {
                     {selectedClinic?.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
                     {selectedClinic?.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
                     {item.contents && selectedClinic && (
-                      <div className="mentions" title={getNameMentions(item, selectedClinic.name).map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined}>
-                        <small>상호명</small><strong className="rank-value">{getNameMentions(item, selectedClinic.name).length}<small>개</small></strong>
+                      <div className="mentions" title={getNameMentions(item, clinicNames(selectedClinic)).map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined}>
+                        <small>상호명</small><strong className="rank-value">{getNameMentions(item, clinicNames(selectedClinic)).length}<small>개</small></strong>
                       </div>
                     )}
                   </div>
