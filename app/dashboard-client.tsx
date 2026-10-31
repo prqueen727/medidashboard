@@ -10,6 +10,7 @@ interface Clinic {
   place_id: string;
   blog_url: string;
   magazine_url: string | null;
+  homepage_url: string | null;
   keywords: string[];
 }
 
@@ -18,6 +19,7 @@ interface ClinicForm {
   placeId: string;
   blogUrl: string;
   magazineUrl: string;
+  homepageUrl: string;
   keywords: string;
 }
 
@@ -62,6 +64,7 @@ interface KeywordResult {
   placeRank?: PlaceRank;
   integratedRank?: number | null;
   magazineRank?: number | null;
+  homepageRank?: number | null;
   places?: PlaceItem[];
   contents?: ContentItem[];
   trackedCompetitors?: TrackedCompetitor[];
@@ -72,7 +75,7 @@ interface KeywordSearchResult {
   keyword: string;
   places: PlaceItem[];
   contents: ContentItem[];
-  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null }>;
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null }>;
   error?: string;
 }
 
@@ -105,11 +108,18 @@ interface Snapshot {
 
 type Tab = 'place' | 'content' | 'competitor';
 
-const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', keywords: '' };
+const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', keywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '' };
 
 function toClinicForm(clinic: Clinic): ClinicForm {
-  return { name: clinic.name, placeId: clinic.place_id, blogUrl: clinic.blog_url, magazineUrl: clinic.magazine_url ?? '', keywords: clinic.keywords.join(', ') };
+  return {
+    name: clinic.name,
+    placeId: clinic.place_id,
+    blogUrl: clinic.blog_url,
+    magazineUrl: clinic.magazine_url ?? '',
+    homepageUrl: clinic.homepage_url ?? '',
+    keywords: clinic.keywords.join(', '),
+  };
 }
 
 function getKeywords(value: string) {
@@ -136,12 +146,20 @@ function Rank({ value }: { value?: number | null }) {
   return value ? <strong className="rank-value">{value}<small>위</small></strong> : <span className="rank-out">순위권 외</span>;
 }
 
-// 통합검색 순위: 공식 블로그는 초록색, 웹 매거진은 파란색
-function ContentRanks({ blogRank, magazineRank, showMagazine }: { blogRank?: number | null; magazineRank?: number | null; showMagazine: boolean }) {
+// 통합검색 순위: 공식 블로그는 초록색, 웹 매거진은 파란색, 홈페이지는 보라색
+function ContentRanks({ blogRank, magazineRank, homepageRank, showMagazine, showHomepage }: {
+  blogRank?: number | null;
+  magazineRank?: number | null;
+  homepageRank?: number | null;
+  showMagazine: boolean;
+  showHomepage: boolean;
+}) {
+  const label = (rank?: number | null) => rank ? `${rank}위` : '순위권 외';
   return (
     <span className="content-ranks">
-      <span className="content-rank blog">블로그 {blogRank ? `${blogRank}위` : '순위권 외'}</span>
-      {showMagazine && <span className="content-rank magazine">매거진 {magazineRank ? `${magazineRank}위` : '순위권 외'}</span>}
+      <span className="content-rank blog">블로그 {label(blogRank)}</span>
+      {showMagazine && <span className="content-rank magazine">매거진 {label(magazineRank)}</span>}
+      {showHomepage && <span className="content-rank homepage">홈페이지 {label(homepageRank)}</span>}
     </span>
   );
 }
@@ -187,7 +205,13 @@ export default function DashboardClient() {
         body: JSON.stringify({
           keywords: clinic.keywords,
           targets: [
-            { id: 'clinic', placeId, blogUrl: clinic.blog_url, ...(clinic.magazine_url ? { magazineUrl: clinic.magazine_url } : {}) },
+            {
+              id: 'clinic',
+              placeId,
+              blogUrl: clinic.blog_url,
+              ...(clinic.magazine_url ? { magazineUrl: clinic.magazine_url } : {}),
+              ...(clinic.homepage_url ? { homepageUrl: clinic.homepage_url } : {}),
+            },
             ...competitorList.map((competitor) => ({ id: competitor.id, placeId: competitor.place_id, blogUrl: competitor.blog_url })),
           ],
         }),
@@ -205,6 +229,7 @@ export default function DashboardClient() {
           },
           integratedRank: mine?.contentRank ?? null,
           magazineRank: mine?.magazineRank ?? null,
+          homepageRank: mine?.homepageRank ?? null,
           places: search.places,
           contents: search.contents,
           integratedError: search.error,
@@ -334,6 +359,7 @@ export default function DashboardClient() {
         placeId: getPlaceId(form.placeId),
         blogUrl: form.blogUrl.trim(),
         magazineUrl: form.magazineUrl.trim(),
+        homepageUrl: form.homepageUrl.trim(),
         keywords,
       };
       const { clinic } = await readJson<{ clinic: Clinic }>(await fetch('/api/clinics', {
@@ -517,7 +543,11 @@ export default function DashboardClient() {
               <span>웹 매거진 <small>선택</small></span>
               <input value={form.magazineUrl} onChange={(event) => setForm({ ...form, magazineUrl: event.target.value })} placeholder="웹 매거진 주소 (예: magazine.example.com)" />
             </label>
-            <label className="wide">
+            <label>
+              <span>홈페이지 <small>선택</small></span>
+              <input value={form.homepageUrl} onChange={(event) => setForm({ ...form, homepageUrl: event.target.value })} placeholder="홈페이지 주소 (예: www.example.com)" />
+            </label>
+            <label>
               <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
               <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
             </label>
@@ -588,13 +618,14 @@ export default function DashboardClient() {
                   <div className="dual-rank">
                     <div className="blog"><small>공식 블로그</small><Rank value={item.integratedRank} /></div>
                     {selectedClinic?.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
+                    {selectedClinic?.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
                   </div>
                   <p>{item.integratedError ?? `1페이지 콘텐츠 ${item.contents?.length ?? 0}개 기준`}</p>
                 </article>
               </div>
             ))}
             {displayedAnalysis.placeName && <p className="result-footnote">대상 플레이스: {displayedAnalysis.placeName}</p>}
-            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역의 광고 포함 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그와 웹 매거진의 순서입니다.</p>
+            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역의 광고 포함 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그·웹 매거진·홈페이지의 순서입니다.</p>
           </div>
         )}
 
@@ -603,16 +634,19 @@ export default function DashboardClient() {
             {displayedAnalysis.keywordResults.map((item) => {
               const blogKey = selectedClinic ? getAccountKey(selectedClinic.blog_url) : '';
               const magazineKey = selectedClinic?.magazine_url ? getAccountKey(selectedClinic.magazine_url) : '';
+              const homepageKey = selectedClinic?.homepage_url ? getAccountKey(selectedClinic.homepage_url) : '';
               return (
                 <article className="list-card" key={item.keyword}>
                   <div className="list-heading"><div><span className="section-kicker">INTEGRATED SEARCH</span><h3>{item.keyword}</h3></div>
-                    <ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} showMagazine={Boolean(magazineKey)} /></div>
+                    <ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
+                      showMagazine={Boolean(magazineKey)} showHomepage={Boolean(homepageKey)} /></div>
                   {item.contents?.length ? <div className="result-list">{item.contents.slice(0, 15).map((content) => (
                     <a className="result-row" key={`${item.keyword}-${content.rank}`} href={content.link} target="_blank" rel="noreferrer">
                       <span className="row-rank">{String(content.rank).padStart(2, '0')}</span>
                       <span className="row-main"><strong>{content.title}
                         {content.key === blogKey && <span className="own-tag blog">공식 블로그</span>}
                         {magazineKey && content.key === magazineKey && <span className="own-tag magazine">웹 매거진</span>}
+                        {homepageKey && content.key === homepageKey && <span className="own-tag homepage">홈페이지</span>}
                       </strong><small>{CONTENT_TYPE_LABELS[content.type]} · {content.key}</small></span>
                       <span className="row-arrow">↗</span>
                     </a>
@@ -633,7 +667,7 @@ export default function DashboardClient() {
                   <thead><tr><th>검색 키워드</th><th>병원</th><th>플레이스</th><th>통합검색</th></tr></thead>
                   <tbody>{displayedAnalysis.keywordResults.flatMap((item) => {
                     const rows = [
-                      { id: selectedClinic?.id ?? 'clinic', name: selectedClinic?.name ?? '내 병원', placeRank: item.placeRank?.rank ?? null, integratedRank: item.integratedRank ?? null, magazineRank: item.magazineRank ?? null },
+                      { id: selectedClinic?.id ?? 'clinic', name: selectedClinic?.name ?? '내 병원', placeRank: item.placeRank?.rank ?? null, integratedRank: item.integratedRank ?? null, magazineRank: item.magazineRank ?? null, homepageRank: item.homepageRank ?? null },
                       ...(item.trackedCompetitors ?? []),
                     ];
                     return rows.map((competitor, index) => (
@@ -641,8 +675,11 @@ export default function DashboardClient() {
                         {index === 0 && <td rowSpan={rows.length}>{item.keyword}</td>}
                         <td>{competitor.name}{index === 0 && <span className="mine-tag table-mine-tag">내 병원</span>}</td>
                         <td>{competitor.placeRank ? `${competitor.placeRank}위` : '순위권 외'}</td>
-                        <td><ContentRanks blogRank={competitor.integratedRank} magazineRank={'magazineRank' in competitor ? competitor.magazineRank : null}
-                          showMagazine={index === 0 && Boolean(selectedClinic?.magazine_url)} /></td>
+                        <td><ContentRanks blogRank={competitor.integratedRank}
+                          magazineRank={'magazineRank' in competitor ? competitor.magazineRank : null}
+                          homepageRank={'homepageRank' in competitor ? competitor.homepageRank : null}
+                          showMagazine={index === 0 && Boolean(selectedClinic?.magazine_url)}
+                          showHomepage={index === 0 && Boolean(selectedClinic?.homepage_url)} /></td>
                       </tr>
                     ));
                   })}</tbody>
@@ -665,6 +702,7 @@ export default function DashboardClient() {
           <RankTrendChart snapshots={snapshots} keywords={selectedClinic.keywords} metric="place" title="플레이스 순위 변동" />
           <RankTrendChart snapshots={snapshots} keywords={selectedClinic.keywords} metric="blog" title="공식 블로그 순위 변동" />
           {selectedClinic.magazine_url && <RankTrendChart snapshots={snapshots} keywords={selectedClinic.keywords} metric="magazine" title="웹 매거진 순위 변동" />}
+          {selectedClinic.homepage_url && <RankTrendChart snapshots={snapshots} keywords={selectedClinic.keywords} metric="homepage" title="홈페이지 순위 변동" />}
         </>}
 
         <section className="history-section">
@@ -684,7 +722,8 @@ export default function DashboardClient() {
                       {index === 0 && <td rowSpan={snapshot.payload.keywordResults.length}><button type="button" className="date-link" onClick={() => selectSnapshot(snapshot)}>{formatDate(snapshot.snapshot_date)}</button></td>}
                       <td>{item.keyword}</td>
                       <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
-                      <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} showMagazine={Boolean(selectedClinic.magazine_url)} /></td>
+                      <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
+                        showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} /></td>
                     </tr>
                   )))}
                 </tbody>

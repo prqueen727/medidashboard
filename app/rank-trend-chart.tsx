@@ -7,6 +7,7 @@ interface TrendKeywordResult {
   placeRank?: { rank: number | null };
   integratedRank?: number | null;
   magazineRank?: number | null;
+  homepageRank?: number | null;
 }
 
 interface TrendSnapshot {
@@ -14,7 +15,7 @@ interface TrendSnapshot {
   payload: { keywordResults: TrendKeywordResult[] };
 }
 
-type Metric = 'place' | 'blog' | 'magazine';
+type Metric = 'place' | 'blog' | 'magazine' | 'homepage';
 
 // 검증된 범주형 팔레트(고정 순서). 키워드 색은 선택 시 배정된 슬롯을 계속 유지한다.
 const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
@@ -26,7 +27,8 @@ const MARGIN = { top: 28, right: 24, bottom: 34, left: 44 };
 function getRank(item: TrendKeywordResult | undefined, metric: Metric) {
   if (!item) return null;
   if (metric === 'place') return item.placeRank?.rank ?? null;
-  return (metric === 'blog' ? item.integratedRank : item.magazineRank) ?? null;
+  if (metric === 'blog') return item.integratedRank ?? null;
+  return (metric === 'magazine' ? item.magazineRank : item.homepageRank) ?? null;
 }
 
 function formatShortDate(value: string) {

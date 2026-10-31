@@ -8,6 +8,7 @@ interface ClinicInput {
   placeId?: unknown;
   blogUrl?: unknown;
   magazineUrl?: unknown;
+  homepageUrl?: unknown;
   keywords?: unknown;
   id?: unknown;
 }
@@ -18,6 +19,7 @@ function parseClinic(input: ClinicInput) {
   const placeId = placeInput.match(/\/place\/(\d+)/)?.[1] ?? placeInput;
   const blogUrl = typeof input.blogUrl === 'string' ? input.blogUrl.trim() : '';
   const magazineUrl = typeof input.magazineUrl === 'string' ? input.magazineUrl.trim() : '';
+  const homepageUrl = typeof input.homepageUrl === 'string' ? input.homepageUrl.trim() : '';
   const keywords = Array.isArray(input.keywords)
     ? [...new Set(input.keywords.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
     : typeof input.keywords === 'string'
@@ -28,11 +30,12 @@ function parseClinic(input: ClinicInput) {
   if (!/^\d+$/.test(placeId)) return { error: '올바른 네이버 플레이스 URL 또는 숫자 ID를 입력해주세요.' };
   if (!blogUrl || blogUrl.length > 500) return { error: '공식 블로그 주소를 입력해주세요.' };
   if (magazineUrl.length > 500) return { error: '웹 매거진 주소는 500자 이내로 입력해주세요.' };
+  if (homepageUrl.length > 500) return { error: '홈페이지 주소는 500자 이내로 입력해주세요.' };
   if (keywords.length === 0 || keywords.length > 20 || keywords.some((keyword) => keyword.length > 100)) {
     return { error: '검색 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
   }
 
-  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, keywords } };
+  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, keywords } };
 }
 
 export async function GET() {

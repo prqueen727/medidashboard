@@ -9,13 +9,14 @@ interface Target {
   placeId: string;
   blogUrl: string;
   magazineUrl?: string;
+  homepageUrl?: string;
 }
 
 interface KeywordSearchResult {
   keyword: string;
   places: PlaceItem[];
   contents: ContentItem[];
-  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null }>;
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null }>;
   error?: string;
 }
 
@@ -28,7 +29,8 @@ function isTarget(value: unknown): value is Target {
   if (!value || typeof value !== 'object') return false;
   const target = value as Record<string, unknown>;
   return typeof target.id === 'string' && typeof target.placeId === 'string' && typeof target.blogUrl === 'string'
-    && (target.magazineUrl === undefined || typeof target.magazineUrl === 'string');
+    && (target.magazineUrl === undefined || typeof target.magazineUrl === 'string')
+    && (target.homepageUrl === undefined || typeof target.homepageUrl === 'string');
 }
 
 export async function POST(request: NextRequest) {
@@ -47,8 +49,10 @@ export async function POST(request: NextRequest) {
     const keysOf = (target: Target) => ({
       blog: getAccountKey(target.blogUrl),
       magazine: target.magazineUrl ? getAccountKey(target.magazineUrl) : '',
+      homepage: target.homepageUrl ? getAccountKey(target.homepageUrl) : '',
     });
-    const magazineKeys = targets.map((target) => keysOf(target).magazine).filter(Boolean);
+    // 등록한 웹 매거진·홈페이지는 웹사이트 결과여도 콘텐츠로 센다
+    const siteKeys = targets.flatMap((target) => [keysOf(target).magazine, keysOf(target).homepage]).filter(Boolean);
     const rankOf = (contents: ContentItem[], key: string) => key ? contents.find((content) => content.key === key)?.rank ?? null : null;
 
     const results: KeywordSearchResult[] = [];
@@ -57,13 +61,14 @@ export async function POST(request: NextRequest) {
       try {
         const html = await fetchIntegratedSearch(keyword);
         const places = parsePlaces(html);
-        const contents = parseContents(html, magazineKeys);
+        const contents = parseContents(html, siteKeys);
         const ranks = Object.fromEntries(targets.map((target) => {
           const keys = keysOf(target);
           return [target.id, {
             placeRank: places.find((place) => place.placeId === target.placeId)?.rank ?? null,
             contentRank: rankOf(contents, keys.blog),
             magazineRank: rankOf(contents, keys.magazine),
+            homepageRank: rankOf(contents, keys.homepage),
           }];
         }));
         results.push({ keyword, places, contents, ranks });

@@ -141,15 +141,16 @@ button { cursor: pointer; }
 .trend-section { margin-top: 30px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 7px 26px rgb(34 51 67 / 3%); }
 .trend-section .history-heading { margin-bottom: 4px; }
 .trend-section + .trend-section { margin-top: 16px; }
-.settings-grid .wide { grid-column: 1 / -1; }
-.dual-rank { display: flex; gap: 22px; }
+.dual-rank { display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .dual-rank > div { display: flex; flex-direction: column; }
 .dual-rank small { color: #8994a0; font-size: 10px; font-weight: 650; }
 .dual-rank .magazine .rank-value { color: #2a78d6; }
+.dual-rank .homepage .rank-value { color: #6250d6; }
 .content-ranks { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .content-rank, .own-tag { padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .content-rank.blog, .own-tag.blog { background: #deefe6; color: #168960; }
 .content-rank.magazine, .own-tag.magazine { background: #e3eefb; color: #1f62b3; }
+.content-rank.homepage, .own-tag.homepage { background: #ebe8fa; color: #5040b8; }
 .own-tag { margin-left: 6px; font-size: 9px; }
 .trend-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 6px; }
 .trend-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid #e5e9ec; border-radius: 999px; background: #fff; color: #8994a0; font-size: 11px; cursor: pointer; }

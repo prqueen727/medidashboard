@@ -114,7 +114,7 @@ export function getAccountKey(value: string) {
 }
 
 // 통합검색 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠를 노출 순서대로 추출
-// includeKeys에 있는 웹사이트(예: 등록한 웹 매거진)는 콘텐츠로 함께 센다
+// includeKeys에 있는 웹사이트(예: 등록한 웹 매거진·홈페이지)는 콘텐츠로 함께 센다
 export function parseContents(html: string, includeKeys: string[] = []): ContentItem[] {
   const cards: { key: string; links: { target: string; url: string; text: string }[] }[] = [];
   const linkPattern = /<a\b([^>]*)>([\s\S]*?)<\/a>/g;
