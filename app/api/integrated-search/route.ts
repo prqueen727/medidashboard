@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
       magazine: target.magazineUrl ? getAccountKey(target.magazineUrl) : '',
       homepage: target.homepageUrl ? getAccountKey(target.homepageUrl) : '',
     });
-    // 등록한 웹 매거진·홈페이지는 웹사이트 결과여도 콘텐츠로 센다
-    const siteKeys = targets.flatMap((target) => [keysOf(target).magazine, keysOf(target).homepage]).filter(Boolean);
+    // 등록한 주소(블로그 칸에 넣은 홈페이지 포함)는 웹사이트 결과여도 콘텐츠로 센다
+    const siteKeys = targets.flatMap((target) => Object.values(keysOf(target))).filter(Boolean);
     const rankOf = (contents: ContentItem[], key: string) => key ? contents.find((content) => content.key === key)?.rank ?? null : null;
 
     const results: KeywordSearchResult[] = [];

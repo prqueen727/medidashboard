@@ -108,7 +108,7 @@ interface Snapshot {
 
 type Tab = 'place' | 'content' | 'competitor';
 type TrendMetric = 'place' | 'blog' | 'content';
-type CompareMetric = 'place' | 'blog';
+type CompareMetric = 'place' | 'content';
 
 function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   if (!item) return null;
@@ -197,8 +197,7 @@ export default function DashboardClient() {
   const [competitorForm, setCompetitorForm] = useState<CompetitorForm>(emptyCompetitorForm);
   const [editingCompetitorId, setEditingCompetitorId] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('place');
-  const [compareMetric, setCompareMetric] = useState<CompareMetric>('place');
-  const [compareKeyword, setCompareKeyword] = useState('');
+  const [compareKeywords, setCompareKeywords] = useState<Record<CompareMetric, string>>({ place: '', content: '' });
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedDate, setSelectedDate] = useState('today');
@@ -219,17 +218,17 @@ export default function DashboardClient() {
     values: Object.fromEntries(snapshot.payload.keywordResults.map((item) => [item.keyword, getKeywordRank(item, metric)])),
   }));
   const keywordOptions = (selectedClinic?.keywords ?? []).map((keyword) => ({ id: keyword, label: keyword }));
-  const activeCompareKeyword = selectedClinic?.keywords.includes(compareKeyword) ? compareKeyword : selectedClinic?.keywords[0] ?? '';
-  const competitorTrend = snapshots.map((snapshot) => {
-    const item = snapshot.payload.keywordResults.find((result) => result.keyword === activeCompareKeyword);
+  const activeCompareKeyword = (metric: CompareMetric) =>
+    selectedClinic?.keywords.includes(compareKeywords[metric]) ? compareKeywords[metric] : selectedClinic?.keywords[0] ?? '';
+  const competitorRank = (competitor: TrackedCompetitor, metric: CompareMetric) =>
+    metric === 'place' ? competitor.placeRank : competitor.integratedRank;
+  const competitorTrend = (metric: CompareMetric) => snapshots.map((snapshot) => {
+    const item = snapshot.payload.keywordResults.find((result) => result.keyword === activeCompareKeyword(metric));
     return {
       date: snapshot.snapshot_date,
       values: {
-        clinic: getKeywordRank(item, compareMetric),
-        ...Object.fromEntries((item?.trackedCompetitors ?? []).map((competitor) => [
-          competitor.id,
-          compareMetric === 'place' ? competitor.placeRank : competitor.integratedRank,
-        ])),
+        clinic: getKeywordRank(item, metric),
+        ...Object.fromEntries((item?.trackedCompetitors ?? []).map((competitor) => [competitor.id, competitorRank(competitor, metric)])),
       },
     };
   });
@@ -542,12 +541,48 @@ export default function DashboardClient() {
     setActiveTab('place');
   };
 
-  const compareToggle = (
-    <div className="trend-metric" role="group" aria-label="비교할 순위">
-      <button type="button" className={compareMetric === 'place' ? 'active' : ''} onClick={() => setCompareMetric('place')}>플레이스</button>
-      <button type="button" className={compareMetric === 'blog' ? 'active' : ''} onClick={() => setCompareMetric('blog')}>통합검색</button>
-    </div>
-  );
+  const renderComparison = (analysis: Analysis, metric: CompareMetric) => {
+    const label = metric === 'place' ? '플레이스' : '콘텐츠';
+    return (
+      <>
+        <div className="list-card competitor-card">
+          <div className="list-heading"><div><span className="section-kicker">{metric === 'place' ? 'PLACE' : 'CONTENT'} COMPARISON</span><h3>{label} 키워드별 순위 비교</h3></div></div>
+          <div className="tracked-rank-table-wrap">
+            <table className="history-table compare-table">
+              <thead><tr>
+                <th>키워드</th>
+                <th><span className="compare-head mine">{selectedClinic?.name ?? '내 병원'}</span></th>
+                {trackedCompetitors.map((competitor) => <th key={competitor.id}><span className="compare-head">{competitor.name}</span></th>)}
+              </tr></thead>
+              <tbody>{analysis.keywordResults.map((item) => {
+                const mine = getKeywordRank(item, metric);
+                return (
+                  <tr key={item.keyword}>
+                    <td>{item.keyword}</td>
+                    <td><strong className="compare-mine">{mine ? `${mine}위` : '순위권 외'}</strong></td>
+                    {trackedCompetitors.map((competitor) => {
+                      const tracked = item.trackedCompetitors?.find((entry) => entry.id === competitor.id);
+                      return <td key={competitor.id}>{tracked
+                        ? <RankGap mine={mine} theirs={competitorRank(tracked, metric)} />
+                        : <span className="rank-out">-</span>}</td>;
+                    })}
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+          <p className="result-footnote">{metric === 'place'
+            ? '통합검색 플레이스 영역에서 광고를 제외한 노출 순서 기준입니다.'
+            : '통합검색 1페이지 콘텐츠 순서 기준입니다. 내 병원은 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위, 경쟁 병원은 등록한 주소의 순위입니다.'} &quot;-&quot;는 경쟁 병원을 등록하기 전에 분석한 결과입니다.</p>
+        </div>
+        <RankTrendChart title={`${label} 순위 추세 비교`} kicker="COMPETITOR TREND" data={competitorTrend(metric)} options={competitorOptions} defaultCount={8}
+          actions={<select className="compare-select" value={activeCompareKeyword(metric)} aria-label={`${label} 비교 키워드`}
+            onChange={(event) => setCompareKeywords((previous) => ({ ...previous, [metric]: event.target.value }))}>
+            {selectedClinic?.keywords.map((keyword) => <option key={keyword} value={keyword}>{keyword}</option>)}
+          </select>} />
+      </>
+    );
+  };
 
   return (
     <main className="dashboard-shell">
@@ -626,7 +661,7 @@ export default function DashboardClient() {
           <form className="competitor-form" onSubmit={(event) => void handleSaveCompetitor(event)}>
             <label><span>경쟁 병원명</span><input value={competitorForm.name} onChange={(event) => setCompetitorForm({ ...competitorForm, name: event.target.value })} placeholder="병원명" required disabled={!selectedClinic} /></label>
             <label><span>플레이스 URL 또는 ID</span><input value={competitorForm.placeId} onChange={(event) => setCompetitorForm({ ...competitorForm, placeId: event.target.value })} placeholder="네이버 플레이스 ID" required disabled={!selectedClinic} /></label>
-            <label><span>블로그 주소</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디" required disabled={!selectedClinic} /></label>
+            <label><span>블로그 또는 홈페이지</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디 또는 홈페이지 주소" required disabled={!selectedClinic} /></label>
             <button type="submit" className="secondary-button" disabled={!selectedClinic || saving || loading}>{editingCompetitorId ? '수정 저장' : '경쟁 병원 추가'}</button>
             {editingCompetitorId && <button type="button" className="cancel-button" onClick={() => { setEditingCompetitorId(''); setCompetitorForm(emptyCompetitorForm); }}>취소</button>}
           </form>
@@ -718,49 +753,15 @@ export default function DashboardClient() {
 
         {!loading && displayedAnalysis && activeTab === 'competitor' && (
           <>
-            <div className="list-card competitor-card">
-              <div className="list-heading">
-                <div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div>
-                {compareToggle}
+            {trackedCompetitors.length > 0 ? <>
+              {renderComparison(displayedAnalysis, 'place')}
+              {renderComparison(displayedAnalysis, 'content')}
+            </> : <>
+              <div className="list-card competitor-card">
+                <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>
+                <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 플레이스·콘텐츠 순위를 키워드별로 비교합니다.</p>
               </div>
-              {trackedCompetitors.length ? (
-                <div className="tracked-rank-table-wrap">
-                  <table className="history-table compare-table">
-                    <thead><tr>
-                      <th>키워드</th>
-                      <th><span className="compare-head mine">{selectedClinic?.name ?? '내 병원'}</span></th>
-                      {trackedCompetitors.map((competitor) => <th key={competitor.id}><span className="compare-head">{competitor.name}</span></th>)}
-                    </tr></thead>
-                    <tbody>{displayedAnalysis.keywordResults.map((item) => {
-                      const mine = getKeywordRank(item, compareMetric);
-                      return (
-                        <tr key={item.keyword}>
-                          <td>{item.keyword}</td>
-                          <td><strong className="compare-mine">{mine ? `${mine}위` : '순위권 외'}</strong></td>
-                          {trackedCompetitors.map((competitor) => {
-                            const tracked = item.trackedCompetitors?.find((entry) => entry.id === competitor.id);
-                            return <td key={competitor.id}>{tracked
-                              ? <RankGap mine={mine} theirs={compareMetric === 'place' ? tracked.placeRank : tracked.integratedRank} />
-                              : <span className="rank-out">-</span>}</td>;
-                          })}
-                        </tr>
-                      );
-                    })}</tbody>
-                  </table>
-                </div>
-              ) : <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 키워드별 순위를 비교합니다.</p>}
-              <p className="result-footnote">{compareMetric === 'place'
-                ? '통합검색 플레이스 영역에서 광고를 제외한 노출 순서 기준입니다.'
-                : '통합검색 1페이지 콘텐츠 중 각 병원 공식 블로그의 순서 기준입니다.'} &quot;-&quot;는 경쟁 병원을 등록하기 전에 분석한 결과입니다.</p>
-            </div>
-
-            {trackedCompetitors.length > 0 ? (
-              <RankTrendChart title="순위 추세 비교" kicker="COMPETITOR TREND" data={competitorTrend} options={competitorOptions} defaultCount={8}
-                actions={<select className="compare-select" value={activeCompareKeyword} onChange={(event) => setCompareKeyword(event.target.value)} aria-label="비교할 키워드">
-                  {selectedClinic?.keywords.map((keyword) => <option key={keyword} value={keyword}>{keyword}</option>)}
-                </select>} />
-            ) : displayedAnalysis.competitors.length > 0 && (
-              <div className="list-card competitor-card places-card">
+              {displayedAnalysis.competitors.length > 0 && <div className="list-card competitor-card places-card">
                 <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{selectedClinic?.keywords[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
                 <div className="competitor-list">{displayedAnalysis.competitors.map((competitor) => {
                   const isMine = competitor.placeId === selectedClinic?.place_id;
@@ -771,8 +772,8 @@ export default function DashboardClient() {
                   </div>;
                 })}</div>
                 <p className="result-footnote">경쟁 병원으로 등록할 곳을 고를 때 참고하세요. 플레이스 ID는 ↗ 링크 주소의 숫자입니다.</p>
-              </div>
-            )}
+              </div>}
+            </>}
           </>
         )}
 
