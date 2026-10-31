@@ -869,6 +869,13 @@ export default function DashboardClient() {
           </div>
         )}
 
+        {/* 순위 변동 그래프: 01 탭 아래 (인쇄할 때도 01 섹션에 포함) */}
+        {selectedClinic && (activeTab === 'place' || printAll) && <>
+          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
+          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
+            footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
+        </>}
+
         {printAll && <h2 className="print-section-title">02 통합검색 콘텐츠</h2>}
         {!loading && displayedAnalysis && (activeTab === 'content' || printAll) && (
           <div className="keyword-panels">
@@ -899,6 +906,12 @@ export default function DashboardClient() {
           </div>
         )}
 
+        {selectedClinic && activeTab === 'content' && !printAll && <>
+          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
+          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
+            footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
+        </>}
+
         {printAll && <h2 className="print-section-title">03 경쟁 병원</h2>}
         {!loading && displayedAnalysis && (activeTab === 'competitor' || printAll) && (
           <>
@@ -927,12 +940,6 @@ export default function DashboardClient() {
           </>
         )}
 
-        {printAll && <h2 className="print-section-title">순위 변동 그래프</h2>}
-        {selectedClinic && (activeTab === 'place' || activeTab === 'content' || printAll) && <>
-          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
-          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
-            footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
-        </>}
 
         {activeTab === 'manage' && !adminPassword && (
           <section className="settings-card manage-card lock-card no-print">
