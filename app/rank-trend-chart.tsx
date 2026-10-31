@@ -41,13 +41,14 @@ function smoothPath(points: { x: number; y: number }[]) {
   }, '');
 }
 
-export default function RankTrendChart({ title, kicker = 'RANK TREND', data, options, defaultCount = 3, actions }: {
+export default function RankTrendChart({ title, kicker = 'RANK TREND', data, options, defaultCount = 3, actions, footnote }: {
   title: string;
   kicker?: string;
   data: TrendPoint[];
   options: TrendOption[];
   defaultCount?: number;
   actions?: ReactNode;
+  footnote?: string;
 }) {
   const [slots, setSlots] = useState<(string | null)[]>([]);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -171,6 +172,7 @@ export default function RankTrendChart({ title, kicker = 'RANK TREND', data, opt
           </div>
         )}
       </div>
+      {footnote && <p className="result-footnote">{footnote}</p>}
     </section>
   );
 }

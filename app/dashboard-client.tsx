@@ -107,14 +107,16 @@ interface Snapshot {
 }
 
 type Tab = 'place' | 'content' | 'competitor';
-type TrendMetric = 'place' | 'blog' | 'magazine' | 'homepage';
+type TrendMetric = 'place' | 'blog' | 'content';
 type CompareMetric = 'place' | 'blog';
 
 function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   if (!item) return null;
   if (metric === 'place') return item.placeRank?.rank ?? null;
   if (metric === 'blog') return item.integratedRank ?? null;
-  return (metric === 'magazine' ? item.magazineRank : item.homepageRank) ?? null;
+  // 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위
+  const ranks = [item.integratedRank, item.magazineRank, item.homepageRank].filter((rank): rank is number => Boolean(rank));
+  return ranks.length ? Math.min(...ranks) : null;
 }
 
 // 경쟁 병원 순위를 내 병원과 비교한 차이 (순위 숫자가 클수록 낮은 순위)
@@ -776,9 +778,8 @@ export default function DashboardClient() {
 
         {selectedClinic && activeTab !== 'competitor' && <>
           <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
-          <RankTrendChart title="공식 블로그 순위 변동" data={keywordTrend('blog')} options={keywordOptions} />
-          {selectedClinic.magazine_url && <RankTrendChart title="웹 매거진 순위 변동" data={keywordTrend('magazine')} options={keywordOptions} />}
-          {selectedClinic.homepage_url && <RankTrendChart title="홈페이지 순위 변동" data={keywordTrend('homepage')} options={keywordOptions} />}
+          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
+            footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
         </>}
 
         <section className="history-section">
