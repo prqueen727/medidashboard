@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, getSupabaseErrorMessage } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +40,7 @@ export async function GET() {
     return NextResponse.json({ clinics: data });
   } catch (error) {
     console.error('Clinic list error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '병원 목록을 불러오지 못했습니다.' }, { status: 503 });
+    return NextResponse.json({ error: getSupabaseErrorMessage(error, '병원 목록을 불러오지 못했습니다.') }, { status: 503 });
   }
 }
 
@@ -59,6 +59,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ clinic: result.data });
   } catch (error) {
     console.error('Clinic save error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '병원 정보를 저장하지 못했습니다.' }, { status: 503 });
+    return NextResponse.json({ error: getSupabaseErrorMessage(error, '병원 정보를 저장하지 못했습니다.') }, { status: 503 });
   }
 }

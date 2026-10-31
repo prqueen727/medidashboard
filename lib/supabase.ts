@@ -13,6 +13,24 @@ export function getSupabaseAdmin() {
   });
 }
 
+export function getSupabaseErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error
+    ? error.message
+    : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : '';
+  const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : '';
+
+  if (!message) return fallback;
+  if (code === '42P01' || code === 'PGRST205') {
+    return `Supabase에서 필요한 테이블을 찾지 못했습니다. 최신 supabase/schema.sql을 SQL Editor에서 실행해주세요. (${code})`;
+  }
+  if (code) return `${message} (${code})`;
+  return message;
+}
+
 export function getKoreaDate(offsetDays = 0) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
