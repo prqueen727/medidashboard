@@ -32,6 +32,9 @@ create table if not exists public.clinic_competitors (
   unique (clinic_id, place_id)
 );
 
+alter table public.clinic_competitors add column if not exists homepage_url text;
+alter table public.clinic_competitors alter column blog_url drop not null;
+
 create index if not exists rank_snapshots_clinic_date_idx
   on public.rank_snapshots (clinic_id, snapshot_date desc);
 create index if not exists clinic_competitors_clinic_idx

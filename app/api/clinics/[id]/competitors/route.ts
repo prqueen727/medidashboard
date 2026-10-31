@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, getSupabaseErrorMessage } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +8,7 @@ interface CompetitorInput {
   name?: unknown;
   placeId?: unknown;
   blogUrl?: unknown;
+  homepageUrl?: unknown;
 }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const placeInput = typeof body.placeId === 'string' ? body.placeId.trim() : '';
     const placeId = placeInput.match(/\/place\/(\d+)/)?.[1] ?? placeInput;
     const blogUrl = typeof body.blogUrl === 'string' ? body.blogUrl.trim() : '';
+    const homepageUrl = typeof body.homepageUrl === 'string' ? body.homepageUrl.trim() : '';
 
     if (!name || name.length > 100) {
       return NextResponse.json({ error: '경쟁 병원명은 1~100자로 입력해주세요.' }, { status: 400 });
@@ -43,8 +45,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!/^\d+$/.test(placeId)) {
       return NextResponse.json({ error: '올바른 네이버 플레이스 URL 또는 숫자 ID를 입력해주세요.' }, { status: 400 });
     }
-    if (!blogUrl || blogUrl.length > 500) {
-      return NextResponse.json({ error: '경쟁 병원의 네이버 블로그 주소를 입력해주세요.' }, { status: 400 });
+    if (!blogUrl && !homepageUrl) {
+      return NextResponse.json({ error: '경쟁 병원의 블로그나 홈페이지 주소 중 하나 이상을 입력해주세요.' }, { status: 400 });
+    }
+    if (blogUrl.length > 500 || homepageUrl.length > 500) {
+      return NextResponse.json({ error: '블로그와 홈페이지 주소는 500자 이내로 입력해주세요.' }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
@@ -76,7 +81,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       }
     }
 
-    const values = { clinic_id: clinicId, name, place_id: placeId, blog_url: blogUrl };
+    const values = { clinic_id: clinicId, name, place_id: placeId, blog_url: blogUrl || null, homepage_url: homepageUrl || null };
     const result = typeof body.id === 'string' && body.id
       ? await supabase.from('clinic_competitors').update(values).eq('clinic_id', clinicId).eq('id', body.id).select('*').single()
       : await supabase.from('clinic_competitors').upsert(values, { onConflict: 'clinic_id,place_id' }).select('*').single();
@@ -85,6 +90,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ competitor: result.data });
   } catch (error) {
     console.error('Competitor save error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '경쟁 병원을 저장하지 못했습니다.' }, { status: 503 });
+    return NextResponse.json({ error: getSupabaseErrorMessage(error, '경쟁 병원을 저장하지 못했습니다.') }, { status: 503 });
   }
 }

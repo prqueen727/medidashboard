@@ -55,7 +55,7 @@ button { cursor: pointer; }
 .tracked-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tracked-heading h3 { margin: 5px 0 0; color: #354454; font-size: 14px; }
 .competitor-help { margin: 7px 0 13px; color: #929da7; font-size: 11px; line-height: 1.5; }
-.competitor-form { display: grid; grid-template-columns: 1fr 1.25fr 1.25fr auto; align-items: end; gap: 10px; }
+.competitor-form { display: grid; grid-template-columns: 1fr 1.1fr 1.1fr 1.1fr auto; align-items: end; gap: 10px; }
 .competitor-form label { display: flex; min-width: 0; flex-direction: column; gap: 7px; color: #526170; font-size: 11px; font-weight: 650; }
 .competitor-form input { width: 100%; height: 38px; min-width: 0; padding: 0 10px; border: 1px solid #e3e8ec; border-radius: 6px; outline: 0; background: #fcfdfd; color: #263747; font-size: 11px; }
 .competitor-form input:focus { border-color: #7ac7a9; box-shadow: 0 0 0 3px rgb(21 157 114 / 8%); }
@@ -156,6 +156,10 @@ button { cursor: pointer; }
 .rank-gap.higher { color: #d03a55; }
 .rank-gap.same { color: #98a2aa; }
 .places-card { margin-top: 16px; }
+.history-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.history-open { margin-top: 12px; }
+.period-table th, .period-table td { text-align: center; }
+.period-table th:first-child, .period-table td:first-child { text-align: left; }
 .dual-rank { display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .dual-rank > div { display: flex; flex-direction: column; }
 .dual-rank small { color: #8994a0; font-size: 10px; font-weight: 650; }

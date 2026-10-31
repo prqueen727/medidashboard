@@ -28,13 +28,15 @@ interface SavedCompetitor {
   clinic_id: string;
   name: string;
   place_id: string;
-  blog_url: string;
+  blog_url: string | null;
+  homepage_url: string | null;
 }
 
 interface CompetitorForm {
   name: string;
   placeId: string;
   blogUrl: string;
+  homepageUrl: string;
 }
 
 interface PlaceRank {
@@ -106,7 +108,36 @@ interface Snapshot {
   created_at: string;
 }
 
-type Tab = 'place' | 'content' | 'competitor';
+type Tab = 'place' | 'content' | 'competitor' | 'history';
+type HistoryPeriod = 'day' | 'week' | 'month';
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+// 월요일 시작 주의 첫날
+function getWeekStart(value: string) {
+  return shiftDate(value, -((new Date(`${value}T00:00:00Z`).getUTCDay() + 6) % 7));
+}
+
+function formatMonthDay(value: string) {
+  return `${Number(value.slice(5, 7))}/${Number(value.slice(8, 10))}`;
+}
+
+function getPeriodKey(date: string, period: HistoryPeriod) {
+  if (period === 'day') return date;
+  return period === 'week' ? getWeekStart(date) : date.slice(0, 7);
+}
+
+function formatPeriodKey(key: string, period: HistoryPeriod) {
+  if (period === 'day') return formatDate(key);
+  if (period === 'week') return `${formatMonthDay(key)} ~ ${formatMonthDay(shiftDate(key, 6))} 주간`;
+  return `${key.slice(0, 4)}년 ${Number(key.slice(5, 7))}월`;
+}
 type TrendMetric = 'place' | 'blog' | 'content';
 type CompareMetric = 'place' | 'content';
 
@@ -115,8 +146,7 @@ function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   if (metric === 'place') return item.placeRank?.rank ?? null;
   if (metric === 'blog') return item.integratedRank ?? null;
   // 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위
-  const ranks = [item.integratedRank, item.magazineRank, item.homepageRank].filter((rank): rank is number => Boolean(rank));
-  return ranks.length ? Math.min(...ranks) : null;
+  return bestRank(item.integratedRank, item.magazineRank, item.homepageRank);
 }
 
 // 경쟁 병원 순위를 내 병원과 비교한 차이 (순위 숫자가 클수록 낮은 순위)
@@ -134,7 +164,12 @@ function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null 
 }
 
 const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', keywords: '' };
-const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '' };
+const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '', homepageUrl: '' };
+
+function bestRank(...ranks: (number | null | undefined)[]) {
+  const found = ranks.filter((rank): rank is number => Boolean(rank));
+  return found.length ? Math.min(...found) : null;
+}
 
 function toClinicForm(clinic: Clinic): ClinicForm {
   return {
@@ -201,7 +236,9 @@ export default function DashboardClient() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedDate, setSelectedDate] = useState('today');
-  const [historyDays, setHistoryDays] = useState(7);
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('day');
+  const [historyKey, setHistoryKey] = useState('');
+  const [historyMetric, setHistoryMetric] = useState<CompareMetric>('place');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -211,7 +248,9 @@ export default function DashboardClient() {
   const displayedAnalysis = selectedDate === 'today'
     ? analysis
     : snapshots.find((snapshot) => snapshot.snapshot_date === selectedDate)?.payload ?? null;
-  const filteredSnapshots = useMemo(() => snapshots.slice(0, historyDays), [snapshots, historyDays]);
+  const historyKeys = useMemo(() => [...new Set(snapshots.map((snapshot) => getPeriodKey(snapshot.snapshot_date, historyPeriod)))]
+    .sort((a, b) => b.localeCompare(a)), [snapshots, historyPeriod]);
+  const activeHistoryKey = historyKeys.includes(historyKey) ? historyKey : historyKeys[0] ?? '';
 
   const keywordTrend = (metric: TrendMetric) => snapshots.map((snapshot) => ({
     date: snapshot.snapshot_date,
@@ -262,7 +301,12 @@ export default function DashboardClient() {
               ...(clinic.magazine_url ? { magazineUrl: clinic.magazine_url } : {}),
               ...(clinic.homepage_url ? { homepageUrl: clinic.homepage_url } : {}),
             },
-            ...competitorList.map((competitor) => ({ id: competitor.id, placeId: competitor.place_id, blogUrl: competitor.blog_url })),
+            ...competitorList.map((competitor) => ({
+              id: competitor.id,
+              placeId: competitor.place_id,
+              blogUrl: competitor.blog_url ?? '',
+              ...(competitor.homepage_url ? { homepageUrl: competitor.homepage_url } : {}),
+            })),
           ],
         }),
       }));
@@ -288,7 +332,8 @@ export default function DashboardClient() {
             name: competitor.name,
             placeId: competitor.place_id,
             placeRank: search.ranks[competitor.id]?.placeRank ?? null,
-            integratedRank: search.ranks[competitor.id]?.contentRank ?? null,
+            // 경쟁 병원 콘텐츠 순위: 블로그·홈페이지 중 가장 높은 순위
+            integratedRank: bestRank(search.ranks[competitor.id]?.contentRank, search.ranks[competitor.id]?.homepageRank),
           })),
         };
       });
@@ -360,7 +405,7 @@ export default function DashboardClient() {
     void (async () => {
       try {
         const [historyResponse, competitorResponse] = await Promise.all([
-          fetch(`/api/clinics/${clinic.id}/history?days=30`),
+          fetch(`/api/clinics/${clinic.id}/history?days=90`),
           fetch(`/api/clinics/${clinic.id}/competitors`),
         ]);
         const [{ snapshots: savedSnapshots, today }, { competitors: savedCompetitors }] = await Promise.all([
@@ -462,8 +507,8 @@ export default function DashboardClient() {
     }
 
     const placeId = getPlaceId(competitorForm.placeId);
-    if (!competitorForm.name.trim() || !placeId || !competitorForm.blogUrl.trim()) {
-      setNotice('경쟁 병원명, 플레이스 ID, 블로그 주소를 모두 입력해주세요.');
+    if (!competitorForm.name.trim() || !placeId || (!competitorForm.blogUrl.trim() && !competitorForm.homepageUrl.trim())) {
+      setNotice('경쟁 병원명, 플레이스 ID, 블로그나 홈페이지 주소를 입력해주세요.');
       return;
     }
     if (placeId === selectedClinic.place_id) {
@@ -482,6 +527,7 @@ export default function DashboardClient() {
           name: competitorForm.name.trim(),
           placeId,
           blogUrl: competitorForm.blogUrl.trim(),
+          homepageUrl: competitorForm.homepageUrl.trim(),
         }),
       }));
       const updatedCompetitors = trackedCompetitors.some((item) => item.id === competitor.id)
@@ -501,7 +547,7 @@ export default function DashboardClient() {
 
   const handleEditCompetitor = (competitor: SavedCompetitor) => {
     setEditingCompetitorId(competitor.id);
-    setCompetitorForm({ name: competitor.name, placeId: competitor.place_id, blogUrl: competitor.blog_url });
+    setCompetitorForm({ name: competitor.name, placeId: competitor.place_id, blogUrl: competitor.blog_url ?? '', homepageUrl: competitor.homepage_url ?? '' });
   };
 
   const handleDeleteCompetitor = async (competitor: SavedCompetitor) => {
@@ -573,7 +619,7 @@ export default function DashboardClient() {
           </div>
           <p className="result-footnote">{metric === 'place'
             ? '통합검색 플레이스 영역에서 광고를 제외한 노출 순서 기준입니다.'
-            : '통합검색 1페이지 콘텐츠 순서 기준입니다. 내 병원은 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위, 경쟁 병원은 등록한 주소의 순위입니다.'} &quot;-&quot;는 경쟁 병원을 등록하기 전에 분석한 결과입니다.</p>
+            : '통합검색 1페이지 콘텐츠 순서 기준입니다. 내 병원은 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위, 경쟁 병원은 블로그·홈페이지 중 가장 높은 순위입니다.'} &quot;-&quot;는 경쟁 병원을 등록하기 전에 분석한 결과입니다.</p>
         </div>
         <RankTrendChart title={`${label} 순위 추세 비교`} kicker="COMPETITOR TREND" data={competitorTrend(metric)} options={competitorOptions} defaultCount={8}
           actions={<select className="compare-select" value={activeCompareKeyword(metric)} aria-label={`${label} 비교 키워드`}
@@ -657,17 +703,18 @@ export default function DashboardClient() {
             <div><span className="section-kicker">COMPETITOR TRACKING</span><h3>추적할 경쟁 병원</h3></div>
             <span className="count-pill">{trackedCompetitors.length}곳</span>
           </div>
-          <p className="competitor-help">병원마다 플레이스 ID와 블로그 주소를 등록하면 저장된 키워드의 순위를 함께 비교하고 날짜별로 기록합니다.</p>
+          <p className="competitor-help">병원마다 플레이스 ID와 블로그·홈페이지 주소(하나 이상)를 등록하면 저장된 키워드의 순위를 함께 비교하고 날짜별로 기록합니다.</p>
           <form className="competitor-form" onSubmit={(event) => void handleSaveCompetitor(event)}>
             <label><span>경쟁 병원명</span><input value={competitorForm.name} onChange={(event) => setCompetitorForm({ ...competitorForm, name: event.target.value })} placeholder="병원명" required disabled={!selectedClinic} /></label>
             <label><span>플레이스 URL 또는 ID</span><input value={competitorForm.placeId} onChange={(event) => setCompetitorForm({ ...competitorForm, placeId: event.target.value })} placeholder="네이버 플레이스 ID" required disabled={!selectedClinic} /></label>
-            <label><span>블로그 또는 홈페이지</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디 또는 홈페이지 주소" required disabled={!selectedClinic} /></label>
+            <label><span>블로그</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디" disabled={!selectedClinic} /></label>
+            <label><span>홈페이지</span><input value={competitorForm.homepageUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, homepageUrl: event.target.value })} placeholder="www.example.com" disabled={!selectedClinic} /></label>
             <button type="submit" className="secondary-button" disabled={!selectedClinic || saving || loading}>{editingCompetitorId ? '수정 저장' : '경쟁 병원 추가'}</button>
             {editingCompetitorId && <button type="button" className="cancel-button" onClick={() => { setEditingCompetitorId(''); setCompetitorForm(emptyCompetitorForm); }}>취소</button>}
           </form>
           {trackedCompetitors.length > 0 && <div className="saved-competitor-list">{trackedCompetitors.map((competitor) => (
             <div className="saved-competitor" key={competitor.id}>
-              <span><strong>{competitor.name}</strong><small>플레이스 {competitor.place_id} · {competitor.blog_url}</small></span>
+              <span><strong>{competitor.name}</strong><small>{[`플레이스 ${competitor.place_id}`, competitor.blog_url, competitor.homepage_url].filter(Boolean).join(' · ')}</small></span>
               <div><button type="button" className="text-button" onClick={() => handleEditCompetitor(competitor)}>수정</button><button type="button" className="text-button danger-text" onClick={() => void handleDeleteCompetitor(competitor)}>삭제</button></div>
             </div>
           ))}</div>}
@@ -681,17 +728,12 @@ export default function DashboardClient() {
             <button role="tab" aria-selected={activeTab === 'place'} className={activeTab === 'place' ? 'tab active' : 'tab'} onClick={() => setActiveTab('place')}><span className="tab-index">01</span> 플레이스 순위</button>
             <button role="tab" aria-selected={activeTab === 'content'} className={activeTab === 'content' ? 'tab active' : 'tab'} onClick={() => setActiveTab('content')}><span className="tab-index">02</span> 통합검색 콘텐츠</button>
             <button role="tab" aria-selected={activeTab === 'competitor'} className={activeTab === 'competitor' ? 'tab active' : 'tab'} onClick={() => setActiveTab('competitor')}><span className="tab-index">03</span> 경쟁 병원</button>
+            <button role="tab" aria-selected={activeTab === 'history'} className={activeTab === 'history' ? 'tab active' : 'tab'} onClick={() => setActiveTab('history')}><span className="tab-index">04</span> 랭크 히스토리</button>
           </div>
-          <label className="history-range">기록 기간
-            <select value={historyDays} onChange={(event) => setHistoryDays(Number(event.target.value))}>
-              <option value={7}>최근 7일</option>
-              <option value={30}>최근 30일</option>
-            </select>
-          </label>
         </div>
 
         {loading && <div className="loading-panel"><span className="spinner large" /><div><strong>네이버 검색 결과를 모으고 있습니다</strong><p>키워드 수와 네이버 응답 속도에 따라 잠시 걸릴 수 있습니다.</p></div></div>}
-        {!loading && !displayedAnalysis && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '병원을 등록하거나 선택하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
+        {!loading && !displayedAnalysis && activeTab !== 'history' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '병원을 등록하거나 선택하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
 
         {!loading && displayedAnalysis && activeTab === 'place' && (
           <div className="rank-rows">
@@ -777,38 +819,107 @@ export default function DashboardClient() {
           </>
         )}
 
-        {selectedClinic && activeTab !== 'competitor' && <>
+        {selectedClinic && (activeTab === 'place' || activeTab === 'content') && <>
           <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
           <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
         </>}
 
-        <section className="history-section">
-          <div className="history-heading">
-            <div><span className="section-kicker">RANK HISTORY</span><h2>{selectedClinic?.name ?? '병원'} 날짜별 순위</h2></div>
-            <span className="history-caption">날짜를 선택하면 해당일 분석 결과를 볼 수 있습니다.</span>
-          </div>
-          {!selectedClinic && <p className="no-results">병원을 선택하면 날짜별 순위 기록이 표시됩니다.</p>}
-          {selectedClinic && filteredSnapshots.length === 0 && !loading && <p className="no-results">아직 저장된 순위 기록이 없습니다. 오늘 분석 후 날짜별로 기록이 쌓입니다.</p>}
-          {selectedClinic && filteredSnapshots.length > 0 && (
-            <div className="history-table-wrap">
-              <table className="history-table">
-                <thead><tr><th>분석 날짜</th><th>검색 키워드</th><th>플레이스</th><th>통합검색</th></tr></thead>
-                <tbody>
-                  {filteredSnapshots.flatMap((snapshot) => snapshot.payload.keywordResults.map((item, index) => (
-                    <tr key={`${snapshot.id}-${item.keyword}`} className={snapshot.snapshot_date === selectedDate ? 'selected-history' : ''}>
-                      {index === 0 && <td rowSpan={snapshot.payload.keywordResults.length}><button type="button" className="date-link" onClick={() => selectSnapshot(snapshot)}>{formatDate(snapshot.snapshot_date)}</button></td>}
-                      <td>{item.keyword}</td>
-                      <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
-                      <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
-                        showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} /></td>
-                    </tr>
-                  )))}
-                </tbody>
-              </table>
+        {activeTab === 'history' && (
+          <section className="history-section">
+            <div className="history-heading">
+              <div><span className="section-kicker">RANK HISTORY</span><h2>{selectedClinic?.name ?? '병원'} 랭크 히스토리</h2></div>
+              <div className="history-controls">
+                <div className="trend-metric" role="group" aria-label="기간 단위">
+                  {(['day', 'week', 'month'] as const).map((period) => (
+                    <button type="button" key={period} className={historyPeriod === period ? 'active' : ''} onClick={() => setHistoryPeriod(period)}>
+                      {period === 'day' ? '일간' : period === 'week' ? '주간' : '월간'}
+                    </button>
+                  ))}
+                </div>
+                {historyKeys.length > 0 && (
+                  <select className="compare-select" value={activeHistoryKey} onChange={(event) => setHistoryKey(event.target.value)} aria-label="조회 기간">
+                    {historyKeys.map((key) => <option key={key} value={key}>{formatPeriodKey(key, historyPeriod)}</option>)}
+                  </select>
+                )}
+                {historyPeriod !== 'day' && (
+                  <div className="trend-metric" role="group" aria-label="순위 종류">
+                    <button type="button" className={historyMetric === 'place' ? 'active' : ''} onClick={() => setHistoryMetric('place')}>플레이스</button>
+                    <button type="button" className={historyMetric === 'content' ? 'active' : ''} onClick={() => setHistoryMetric('content')}>콘텐츠</button>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </section>
+            {!selectedClinic && <p className="no-results">병원을 선택하면 순위 기록이 표시됩니다.</p>}
+            {selectedClinic && historyKeys.length === 0 && !loading && <p className="no-results">아직 저장된 순위 기록이 없습니다. 오늘 분석 후 날짜별로 기록이 쌓입니다.</p>}
+            {selectedClinic && activeHistoryKey && historyPeriod === 'day' && (() => {
+              const snapshot = snapshots.find((item) => item.snapshot_date === activeHistoryKey);
+              if (!snapshot) return null;
+              return (
+                <div className="history-table-wrap">
+                  <table className="history-table">
+                    <thead><tr><th>검색 키워드</th><th>플레이스</th><th>통합검색</th></tr></thead>
+                    <tbody>{snapshot.payload.keywordResults.map((item) => (
+                      <tr key={item.keyword}>
+                        <td>{item.keyword}</td>
+                        <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
+                        <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
+                          showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} /></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                  <button type="button" className="text-button history-open" onClick={() => selectSnapshot(snapshot)}>이날 분석 결과 자세히 보기 →</button>
+                </div>
+              );
+            })()}
+            {selectedClinic && activeHistoryKey && historyPeriod !== 'day' && (() => {
+              const byDate = new Map(snapshots.map((snapshot) => [snapshot.snapshot_date, snapshot]));
+              // 주간은 요일별, 월간은 주차별로 묶어서 그 기간의 가장 높은 순위를 표시
+              const columns = historyPeriod === 'week'
+                ? Array.from({ length: 7 }, (_, index) => {
+                  const date = shiftDate(activeHistoryKey, index);
+                  return { key: date, label: `${WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]} ${formatMonthDay(date)}`, dates: [date] };
+                })
+                : (() => {
+                  const monthStart = `${activeHistoryKey}-01`;
+                  const result: { key: string; label: string; dates: string[] }[] = [];
+                  for (let weekStart = getWeekStart(monthStart); weekStart.slice(0, 7) <= activeHistoryKey; weekStart = shiftDate(weekStart, 7)) {
+                    const dates = Array.from({ length: 7 }, (_, index) => shiftDate(weekStart, index)).filter((date) => date.startsWith(activeHistoryKey));
+                    result.push({ key: weekStart, label: `${result.length + 1}주차 (${formatMonthDay(dates[0])}~${formatMonthDay(dates[dates.length - 1])})`, dates });
+                  }
+                  return result;
+                })();
+              const allDates = columns.flatMap((column) => column.dates);
+              const cell = (keyword: string, dates: string[]) => {
+                const recorded = dates.flatMap((date) => byDate.get(date) ?? []);
+                if (!recorded.length) return <span className="rank-out">-</span>;
+                const rank = bestRank(...recorded.map((snapshot) => getKeywordRank(snapshot.payload.keywordResults.find((item) => item.keyword === keyword), historyMetric)));
+                return rank ? `${rank}위` : <span className="rank-out">순위권 외</span>;
+              };
+              return (
+                <div className="history-table-wrap">
+                  <table className="history-table period-table">
+                    <thead><tr>
+                      <th>검색 키워드</th>
+                      {columns.map((column) => <th key={column.key}>{column.label}</th>)}
+                      <th>{historyPeriod === 'week' ? '주간 최고' : '월간 최고'}</th>
+                    </tr></thead>
+                    <tbody>{selectedClinic.keywords.map((keyword) => (
+                      <tr key={keyword}>
+                        <td>{keyword}</td>
+                        {columns.map((column) => <td key={column.key}>{cell(keyword, column.dates)}</td>)}
+                        <td><strong>{cell(keyword, allDates)}</strong></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              );
+            })()}
+            <p className="result-footnote">{historyPeriod === 'day'
+              ? '선택한 날짜의 분석 결과입니다.'
+              : `${historyPeriod === 'week' ? '요일' : '주차'}별로 기록된 가장 높은 ${historyMetric === 'place' ? '플레이스' : '콘텐츠'} 순위입니다. "-"는 분석 기록이 없는 기간입니다.`} 최근 90일까지 조회할 수 있습니다.</p>
+          </section>
+        )}
       </section>
       <footer className="dashboard-footer">검색 결과는 네이버의 노출·수집 시점 및 검색 환경에 따라 달라질 수 있습니다.</footer>
     </main>
