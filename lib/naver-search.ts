@@ -5,7 +5,7 @@ export interface PlaceItem {
   isAd: boolean;
 }
 
-export type ContentType = 'blog' | 'cafe' | 'post' | 'influencer' | 'kin' | 'youtube';
+export type ContentType = 'blog' | 'cafe' | 'post' | 'influencer' | 'kin' | 'youtube' | 'web';
 
 export interface ContentItem {
   rank: number;
@@ -114,7 +114,8 @@ export function getAccountKey(value: string) {
 }
 
 // 통합검색 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠를 노출 순서대로 추출
-export function parseContents(html: string): ContentItem[] {
+// includeKeys에 있는 웹사이트(예: 등록한 웹 매거진)는 콘텐츠로 함께 센다
+export function parseContents(html: string, includeKeys: string[] = []): ContentItem[] {
   const cards: { key: string; links: { target: string; url: string; text: string }[] }[] = [];
   const linkPattern = /<a\b([^>]*)>([\s\S]*?)<\/a>/g;
   let match: RegExpExecArray | null;
@@ -144,7 +145,7 @@ export function parseContents(html: string): ContentItem[] {
   const contents: ContentItem[] = [];
   for (const card of cards) {
     const host = card.key.split('/')[0];
-    const type = CONTENT_HOSTS[host];
+    const type = CONTENT_HOSTS[host] ?? (includeKeys.includes(card.key) ? 'web' : undefined);
     if (!type) continue;
     const titleLink = card.links.find((link) => (link.target === '.link' || link.target === '.tit') && link.text)
       ?? card.links.find((link) => link.text);

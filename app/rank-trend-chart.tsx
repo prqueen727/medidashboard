@@ -6,6 +6,7 @@ interface TrendKeywordResult {
   keyword: string;
   placeRank?: { rank: number | null };
   integratedRank?: number | null;
+  magazineRank?: number | null;
 }
 
 interface TrendSnapshot {
@@ -13,7 +14,7 @@ interface TrendSnapshot {
   payload: { keywordResults: TrendKeywordResult[] };
 }
 
-type Metric = 'place' | 'integrated';
+type Metric = 'place' | 'blog' | 'magazine';
 
 // 검증된 범주형 팔레트(고정 순서). 키워드 색은 선택 시 배정된 슬롯을 계속 유지한다.
 const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
@@ -24,7 +25,8 @@ const MARGIN = { top: 28, right: 24, bottom: 34, left: 44 };
 
 function getRank(item: TrendKeywordResult | undefined, metric: Metric) {
   if (!item) return null;
-  return (metric === 'place' ? item.placeRank?.rank : item.integratedRank) ?? null;
+  if (metric === 'place') return item.placeRank?.rank ?? null;
+  return (metric === 'blog' ? item.integratedRank : item.magazineRank) ?? null;
 }
 
 function formatShortDate(value: string) {
@@ -50,8 +52,12 @@ function smoothPath(points: { x: number; y: number }[]) {
   }, '');
 }
 
-export default function RankTrendChart({ snapshots, keywords }: { snapshots: TrendSnapshot[]; keywords: string[] }) {
-  const [metric, setMetric] = useState<Metric>('place');
+export default function RankTrendChart({ snapshots, keywords, metric, title }: {
+  snapshots: TrendSnapshot[];
+  keywords: string[];
+  metric: Metric;
+  title: string;
+}) {
   const [slots, setSlots] = useState<(string | null)[]>([]);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [width, setWidth] = useState(800);
@@ -108,11 +114,7 @@ export default function RankTrendChart({ snapshots, keywords }: { snapshots: Tre
   return (
     <section className="trend-section">
       <div className="history-heading">
-        <div><span className="section-kicker">RANK TREND</span><h2>키워드별 순위 추이</h2></div>
-        <div className="trend-metric" role="group" aria-label="순위 종류">
-          <button type="button" className={metric === 'place' ? 'active' : ''} onClick={() => setMetric('place')}>플레이스</button>
-          <button type="button" className={metric === 'integrated' ? 'active' : ''} onClick={() => setMetric('integrated')}>통합검색</button>
-        </div>
+        <div><span className="section-kicker">RANK TREND</span><h2>{title}</h2></div>
       </div>
       <p className="history-caption">최근 수집된 데이터 기준 (최대 {MAX_POINTS}개) · 키워드를 눌러 최대 {SERIES_COLORS.length}개까지 비교할 수 있습니다.</p>
 
@@ -130,7 +132,7 @@ export default function RankTrendChart({ snapshots, keywords }: { snapshots: Tre
 
       <div className="trend-chart" ref={wrapRef}>
         {points.length === 0 ? <p className="no-results">아직 저장된 순위 기록이 없습니다.</p> : (
-          <svg width={width} height={HEIGHT} role="img" aria-label={`키워드별 ${metric === 'place' ? '플레이스' : '통합검색'} 순위 추이`}>
+          <svg width={width} height={HEIGHT} role="img" aria-label={`키워드별 ${title}`}>
             {ticks.map((rank) => (
               <g key={rank}>
                 <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(rank)} y2={y(rank)} className="trend-grid" />

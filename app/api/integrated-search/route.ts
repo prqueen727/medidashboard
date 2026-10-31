@@ -8,13 +8,14 @@ interface Target {
   id: string;
   placeId: string;
   blogUrl: string;
+  magazineUrl?: string;
 }
 
 interface KeywordSearchResult {
   keyword: string;
   places: PlaceItem[];
   contents: ContentItem[];
-  ranks: Record<string, { placeRank: number | null; contentRank: number | null }>;
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null }>;
   error?: string;
 }
 
@@ -26,7 +27,8 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function isTarget(value: unknown): value is Target {
   if (!value || typeof value !== 'object') return false;
   const target = value as Record<string, unknown>;
-  return typeof target.id === 'string' && typeof target.placeId === 'string' && typeof target.blogUrl === 'string';
+  return typeof target.id === 'string' && typeof target.placeId === 'string' && typeof target.blogUrl === 'string'
+    && (target.magazineUrl === undefined || typeof target.magazineUrl === 'string');
 }
 
 export async function POST(request: NextRequest) {
@@ -42,18 +44,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '키워드 1~20개와 순위를 확인할 병원 1~30곳을 입력해주세요.' }, { status: 400 });
     }
 
+    const keysOf = (target: Target) => ({
+      blog: getAccountKey(target.blogUrl),
+      magazine: target.magazineUrl ? getAccountKey(target.magazineUrl) : '',
+    });
+    const magazineKeys = targets.map((target) => keysOf(target).magazine).filter(Boolean);
+    const rankOf = (contents: ContentItem[], key: string) => key ? contents.find((content) => content.key === key)?.rank ?? null : null;
+
     const results: KeywordSearchResult[] = [];
     for (const [index, keyword] of keywords.entries()) {
       if (index > 0) await delay(REQUEST_INTERVAL_MS);
       try {
         const html = await fetchIntegratedSearch(keyword);
         const places = parsePlaces(html);
-        const contents = parseContents(html);
+        const contents = parseContents(html, magazineKeys);
         const ranks = Object.fromEntries(targets.map((target) => {
-          const blogKey = getAccountKey(target.blogUrl);
+          const keys = keysOf(target);
           return [target.id, {
             placeRank: places.find((place) => place.placeId === target.placeId)?.rank ?? null,
-            contentRank: blogKey ? contents.find((content) => content.key === blogKey)?.rank ?? null : null,
+            contentRank: rankOf(contents, keys.blog),
+            magazineRank: rankOf(contents, keys.magazine),
           }];
         }));
         results.push({ keyword, places, contents, ranks });

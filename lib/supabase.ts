@@ -106,6 +106,9 @@ export function getSupabaseErrorMessage(error: unknown, fallback: string) {
   if (code === '42501') {
     return 'Supabase 테이블 접근 권한이 없습니다. Railway의 SUPABASE_SECRET_KEY가 secret(service_role) 키인지 확인하고, 최신 supabase/schema.sql의 grant 구문을 SQL Editor에서 실행해주세요. (42501)';
   }
+  if (code === '42703' || code === 'PGRST204') {
+    return `Supabase 테이블에 필요한 칸이 없습니다. 최신 supabase/schema.sql을 SQL Editor에서 실행해주세요. (${code})`;
+  }
   if (code === '42P01' || code === 'PGRST205') {
     return `Supabase에서 필요한 테이블을 찾지 못했습니다. 최신 supabase/schema.sql을 SQL Editor에서 실행해주세요. (${code})`;
   }
