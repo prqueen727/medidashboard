@@ -171,6 +171,7 @@ button { cursor: pointer; }
 .rank-gap.same { color: #98a2aa; }
 .places-card, .mentions-card { margin-top: 16px; }
 .history-table tr.total-row td { border-top: 1px solid #e3e8ec; background: #fafbfc; font-weight: 650; }
+.print-only { display: none; }
 .print-section-title { margin: 28px 0 12px; color: #293a4a; font-size: 18px; letter-spacing: -.5px; }
 .period-block + .period-block { margin-top: 22px; }
 .period-title { margin: 0 0 6px; color: #3d4c59; font-size: 13px; }
@@ -263,6 +264,8 @@ button { cursor: pointer; }
   .history-table th, .history-table td { padding: 7px; font-size: 9px; }
   .history-table-wrap { overflow: visible; }
   .history-open { display: none !important; }
+  .print-only { display: block; }
+  .dashboard-header .print-dates { margin-top: 8px; color: #41534e; font-size: 12px; font-weight: 650; }
   .print-section-title { break-before: page; }
   .print-section-title.first { break-before: auto; }
   a { color: inherit; text-decoration: none; }

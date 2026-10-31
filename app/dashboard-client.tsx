@@ -797,6 +797,11 @@ export default function DashboardClient() {
           <div className="eyebrow"><span className="live-dot" /> NAVER SEARCH INSIGHT</div>
           <h1>{selectedClinic ? `${selectedClinic.name} 플레이스 & 통합검색 모니터링` : '병원 검색 순위 대시보드'}</h1>
           <p>플레이스 · 통합검색 콘텐츠 · 경쟁 병원의 검색 현황을 한눈에 확인하세요.</p>
+          {/* 인쇄물에만 표시: 화면 오른쪽 위 날짜는 인쇄 때 숨겨진다 */}
+          <p className="print-only print-dates">
+            분석 기준일 {selectedDate === 'today' ? today : formatDate(selectedDate)}
+            {displayedAnalysis?.completedAt && ` (분석 시각 ${displayedAnalysis.completedAt})`} · 출력일 {today}
+          </p>
         </div>
         <div className="header-actions">
           {today && <div className="header-date">{today}</div>}
