@@ -149,6 +149,28 @@ function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   return bestRank(item.integratedRank, item.magazineRank, item.homepageRank);
 }
 
+function normalizeName(value: string) {
+  return value.toLowerCase().replace(/[\s·.,()[\]-]/g, '');
+}
+
+// 통합검색 콘텐츠 중 제목에 상호명이 들어간 항목
+function getNameMentions(item: KeywordResult, name: string) {
+  const target = normalizeName(name);
+  return target ? (item.contents ?? []).filter((content) => normalizeName(content.title).includes(target)) : [];
+}
+
+// 상호명 노출 개수를 내 병원과 비교한 차이
+function MentionGap({ mine, theirs }: { mine: number; theirs: number }) {
+  const gap = theirs - mine;
+  return (
+    <span className="rank-compare">{theirs}개
+      {gap > 0 ? <span className="rank-gap higher">{gap}개 많음</span>
+        : gap < 0 ? <span className="rank-gap lower">{-gap}개 적음</span>
+          : <span className="rank-gap same">동일</span>}
+    </span>
+  );
+}
+
 // 경쟁 병원 순위를 내 병원과 비교한 차이 (순위 숫자가 클수록 낮은 순위)
 function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null }) {
   if (!theirs) return <span className="rank-out">순위권 외</span>;
@@ -587,6 +609,53 @@ export default function DashboardClient() {
     setActiveTab('place');
   };
 
+  const renderMentions = (analysis: Analysis) => {
+    const clinics = [
+      { id: 'clinic', name: selectedClinic?.name ?? '' },
+      ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name })),
+    ];
+    const rows = analysis.keywordResults.map((item) => ({
+      item,
+      mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.name)) : null,
+    }));
+    const totals = clinics.map((_, index) => rows.reduce((sum, row) => sum + (row.mentions?.[index].length ?? 0), 0));
+    const cellTitle = (mentions: ContentItem[]) => mentions.map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined;
+    return (
+      <div className="list-card competitor-card mentions-card">
+        <div className="list-heading"><div><span className="section-kicker">NAME MENTIONS</span><h3>상호명 노출 비교</h3></div></div>
+        <div className="tracked-rank-table-wrap">
+          <table className="history-table compare-table">
+            <thead><tr>
+              <th>키워드</th>
+              {clinics.map((clinic, index) => <th key={clinic.id}><span className={index === 0 ? 'compare-head mine' : 'compare-head'}>{clinic.name}</span></th>)}
+            </tr></thead>
+            <tbody>
+              {rows.map(({ item, mentions }) => (
+                <tr key={item.keyword}>
+                  <td>{item.keyword}</td>
+                  {clinics.map((clinic, index) => (
+                    <td key={clinic.id} title={mentions ? cellTitle(mentions[index]) : undefined}>
+                      {!mentions ? <span className="rank-out">-</span>
+                        : index === 0 ? <strong className="compare-mine">{mentions[0].length}개</strong>
+                          : <MentionGap mine={mentions[0].length} theirs={mentions[index].length} />}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="total-row">
+                <td>합계</td>
+                {clinics.map((clinic, index) => (
+                  <td key={clinic.id}>{index === 0 ? <strong className="compare-mine">{totals[0]}개</strong> : <MentionGap mine={totals[0]} theirs={totals[index]} />}</td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="result-footnote">통합검색 1페이지에서 콘텐츠로 센 항목(광고·플레이스·웹사이트 제외) 중 제목에 병원명이 들어간 개수입니다. 띄어쓰기는 무시하며, 숫자에 마우스를 올리면 해당 제목을 볼 수 있습니다.</p>
+      </div>
+    );
+  };
+
   const renderComparison = (analysis: Analysis, metric: CompareMetric) => {
     const label = metric === 'place' ? '플레이스' : '콘텐츠';
     return (
@@ -725,7 +794,7 @@ export default function DashboardClient() {
       <section className="results-section">
         <div className="results-toolbar no-print">
           <div className="tabs" role="tablist" aria-label="분석 결과">
-            <button role="tab" aria-selected={activeTab === 'place'} className={activeTab === 'place' ? 'tab active' : 'tab'} onClick={() => setActiveTab('place')}><span className="tab-index">01</span> 플레이스 순위</button>
+            <button role="tab" aria-selected={activeTab === 'place'} className={activeTab === 'place' ? 'tab active' : 'tab'} onClick={() => setActiveTab('place')}><span className="tab-index">01</span> 플레이스 &amp; 콘텐츠 순위</button>
             <button role="tab" aria-selected={activeTab === 'content'} className={activeTab === 'content' ? 'tab active' : 'tab'} onClick={() => setActiveTab('content')}><span className="tab-index">02</span> 통합검색 콘텐츠</button>
             <button role="tab" aria-selected={activeTab === 'competitor'} className={activeTab === 'competitor' ? 'tab active' : 'tab'} onClick={() => setActiveTab('competitor')}><span className="tab-index">03</span> 경쟁 병원</button>
             <button role="tab" aria-selected={activeTab === 'history'} className={activeTab === 'history' ? 'tab active' : 'tab'} onClick={() => setActiveTab('history')}><span className="tab-index">04</span> 랭크 히스토리</button>
@@ -798,6 +867,7 @@ export default function DashboardClient() {
             {trackedCompetitors.length > 0 ? <>
               {renderComparison(displayedAnalysis, 'place')}
               {renderComparison(displayedAnalysis, 'content')}
+              {renderMentions(displayedAnalysis)}
             </> : <>
               <div className="list-card competitor-card">
                 <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>

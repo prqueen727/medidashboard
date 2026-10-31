@@ -155,7 +155,8 @@ button { cursor: pointer; }
 .rank-gap.lower { color: #168960; }
 .rank-gap.higher { color: #d03a55; }
 .rank-gap.same { color: #98a2aa; }
-.places-card { margin-top: 16px; }
+.places-card, .mentions-card { margin-top: 16px; }
+.history-table tr.total-row td { border-top: 1px solid #e3e8ec; background: #fafbfc; font-weight: 650; }
 .history-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .history-open { margin-top: 12px; }
 .period-table th, .period-table td { text-align: center; }
