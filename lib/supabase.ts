@@ -1,11 +1,44 @@
 import { createClient } from '@supabase/supabase-js';
 
+function getRuntimeEnv(name: string) {
+  return process.env[name]?.trim() ?? '';
+}
+
+function getProjectRef(value: string) {
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname.endsWith('.supabase.co') ? hostname.slice(0, -'.supabase.co'.length) : '';
+  } catch {
+    return '';
+  }
+}
+
+function getLegacyKeyProjectRef(key: string) {
+  const payload = key.split('.')[1];
+  if (!payload) return '';
+
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return claims && typeof claims === 'object' && 'ref' in claims && typeof claims.ref === 'string'
+      ? claims.ref
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getRuntimeEnv('SUPABASE_URL') || getRuntimeEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const serviceRoleKey = getRuntimeEnv('SUPABASE_SECRET_KEY') || getRuntimeEnv('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!url || !serviceRoleKey) {
-    throw new Error('Supabase 환경변수가 설정되지 않았습니다. .env.local 설정 방법은 README.md를 확인해주세요.');
+    throw new Error('Supabase 서버 환경변수가 설정되지 않았습니다. SUPABASE_URL과 SUPABASE_SECRET_KEY를 설정해주세요.');
+  }
+
+  const urlProjectRef = getProjectRef(url);
+  const keyProjectRef = getLegacyKeyProjectRef(serviceRoleKey);
+  if (urlProjectRef && keyProjectRef && urlProjectRef !== keyProjectRef) {
+    throw new Error('Supabase 프로젝트 URL과 API 키가 서로 다른 프로젝트의 값입니다. Railway의 SUPABASE_URL과 SUPABASE_SECRET_KEY를 같은 프로젝트에서 복사해주세요.');
   }
 
   return createClient(url, serviceRoleKey, {
@@ -24,6 +57,9 @@ export function getSupabaseErrorMessage(error: unknown, fallback: string) {
     : '';
 
   if (!message) return fallback;
+  if (/invalid api key/i.test(message)) {
+    return 'Supabase가 서버 API 키를 거부했습니다. Railway의 SUPABASE_URL과 SUPABASE_SECRET_KEY가 같은 프로젝트의 현재 활성 키인지 확인해주세요.';
+  }
   if (code === '42P01' || code === 'PGRST205') {
     return `Supabase에서 필요한 테이블을 찾지 못했습니다. 최신 supabase/schema.sql을 SQL Editor에서 실행해주세요. (${code})`;
   }

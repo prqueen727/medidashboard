@@ -5,15 +5,15 @@
 ## 실행 준비
 
 1. Supabase 프로젝트를 만들고 SQL Editor에서 [`supabase/schema.sql`](./supabase/schema.sql)을 실행합니다.
-2. 프로젝트의 API 설정에서 Project URL과 `service_role` 키를 확인합니다.
+2. 프로젝트의 API 설정에서 Project URL과 서버 키(`service_role` 또는 Secret API key)를 확인합니다.
 3. 이 폴더에 `.env.local` 파일을 만들고 서버 환경변수를 설정합니다.
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your-server-only-key
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`는 데이터베이스 관리자 권한이 있는 비밀 키입니다. 브라우저 코드, 공개 저장소 또는 `NEXT_PUBLIC_` 환경변수에 넣지 말고 로컬 `.env.local`과 배포 플랫폼의 서버 환경변수에만 저장하세요.
+`SUPABASE_SECRET_KEY`는 데이터베이스 관리자 권한이 있는 비밀 키입니다. 브라우저 코드, 공개 저장소 또는 `NEXT_PUBLIC_` 환경변수에 넣지 말고 로컬 `.env.local`과 배포 플랫폼의 서버 환경변수에만 저장하세요. Railway에서는 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY`를 서비스의 Variables에 등록하세요. 기존 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`도 호환되지만, 서버 전용 이름을 사용하면 빌드 시점 값과 런타임 설정이 혼동되는 것을 방지할 수 있습니다.
 
 ```powershell
 npm ci
