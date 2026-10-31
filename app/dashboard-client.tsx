@@ -277,6 +277,59 @@ export default function DashboardClient() {
   const [notice, setNotice] = useState('');
   const [initializing, setInitializing] = useState(true);
   const [today, setToday] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminInput, setAdminInput] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+
+  // 관리자 잠금 해제는 브라우저 탭을 닫기 전까지만 유지
+  useEffect(() => {
+    try {
+      setAdminPassword(sessionStorage.getItem('adminPassword') ?? '');
+    } catch {
+      // 저장소를 쓸 수 없으면 매번 비밀번호를 입력받는다
+    }
+  }, []);
+
+  const lockAdmin = useCallback(() => {
+    setAdminPassword('');
+    try {
+      sessionStorage.removeItem('adminPassword');
+    } catch {
+      // 무시
+    }
+  }, []);
+
+  const adminFetch = async (url: string, init: RequestInit = {}) => {
+    const response = await fetch(url, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), 'x-admin-password': encodeURIComponent(adminPassword) },
+    });
+    if (response.status === 401) lockAdmin();
+    return response;
+  };
+
+  const handleUnlock = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setUnlocking(true);
+    setNotice('');
+    try {
+      await readJson<{ success: boolean }>(await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'x-admin-password': encodeURIComponent(adminInput) },
+      }));
+      setAdminPassword(adminInput);
+      setAdminInput('');
+      try {
+        sessionStorage.setItem('adminPassword', adminInput);
+      } catch {
+        // 무시
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '비밀번호를 확인하지 못했습니다.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   // 접속한 날짜(한국 시간). 정적 렌더링과 어긋나지 않도록 브라우저에서 계산한다.
   useEffect(() => {
@@ -498,7 +551,7 @@ export default function DashboardClient() {
         nameAliases: getKeywords(form.nameAliases),
         keywords,
       };
-      const { clinic } = await readJson<{ clinic: Clinic }>(await fetch('/api/clinics', {
+      const { clinic } = await readJson<{ clinic: Clinic }>(await adminFetch('/api/clinics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -562,7 +615,7 @@ export default function DashboardClient() {
     setSaving(true);
     setNotice('');
     try {
-      const { competitor } = await readJson<{ competitor: SavedCompetitor }>(await fetch(`/api/clinics/${selectedClinic.id}/competitors`, {
+      const { competitor } = await readJson<{ competitor: SavedCompetitor }>(await adminFetch(`/api/clinics/${selectedClinic.id}/competitors`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -596,7 +649,7 @@ export default function DashboardClient() {
   const handleDeleteCompetitor = async (competitor: SavedCompetitor) => {
     if (!selectedClinic || !window.confirm(`${competitor.name}을(를) 경쟁 병원 목록에서 삭제할까요?`)) return;
     try {
-      await readJson<{ success: boolean }>(await fetch(`/api/clinics/${selectedClinic.id}/competitors/${competitor.id}`, { method: 'DELETE' }));
+      await readJson<{ success: boolean }>(await adminFetch(`/api/clinics/${selectedClinic.id}/competitors/${competitor.id}`, { method: 'DELETE' }));
       const updatedCompetitors = trackedCompetitors.filter((item) => item.id !== competitor.id);
       setTrackedCompetitors(updatedCompetitors);
       setNotice('경쟁 병원을 삭제했습니다. 순위를 업데이트합니다.');
@@ -609,7 +662,7 @@ export default function DashboardClient() {
   const handleDeleteClinic = async () => {
     if (!selectedClinic || !window.confirm(`${selectedClinic.name} 병원과 저장된 순위 기록을 삭제할까요?`)) return;
     try {
-      await readJson<{ success: boolean }>(await fetch(`/api/clinics/${selectedClinic.id}`, { method: 'DELETE' }));
+      await readJson<{ success: boolean }>(await adminFetch(`/api/clinics/${selectedClinic.id}`, { method: 'DELETE' }));
       const remaining = clinics.filter((clinic) => clinic.id !== selectedClinic.id);
       setClinics(remaining);
       setSelectedClinicId(remaining[0]?.id ?? '');
@@ -860,7 +913,19 @@ export default function DashboardClient() {
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
         </>}
 
-        {activeTab === 'manage' && (
+        {activeTab === 'manage' && !adminPassword && (
+          <section className="settings-card manage-card lock-card no-print">
+            <span className="section-kicker">ADMIN ONLY</span>
+            <h2>병원 관리는 관리자만 할 수 있습니다</h2>
+            <p>병원 등록·수정·삭제와 경쟁 병원 관리를 하려면 관리자 비밀번호를 입력해주세요. 대시보드 조회는 비밀번호 없이 이용할 수 있습니다.</p>
+            <form className="lock-form" onSubmit={(event) => void handleUnlock(event)}>
+              <input type="password" value={adminInput} onChange={(event) => setAdminInput(event.target.value)} placeholder="관리자 비밀번호" autoComplete="current-password" required />
+              <button type="submit" className="primary-button" disabled={unlocking || !adminInput}>{unlocking ? <><span className="spinner" /> 확인 중...</> : '잠금 해제'}</button>
+            </form>
+          </section>
+        )}
+
+        {activeTab === 'manage' && adminPassword && (
           <section className="settings-card manage-card no-print">
             <div className="section-heading">
               <div>
@@ -870,6 +935,7 @@ export default function DashboardClient() {
               <div className="clinic-actions">
                 {selectedClinic && <button className="text-button danger-text" type="button" onClick={() => void handleDeleteClinic()}>병원 삭제</button>}
                 <button className="text-button" type="button" onClick={handleNewClinic}>+ 새 병원 등록</button>
+                <button className="text-button" type="button" onClick={lockAdmin}>잠그기</button>
               </div>
             </div>
             <form onSubmit={handleSave}>

@@ -55,6 +55,11 @@ button { cursor: pointer; }
 .picker-card .clinic-picker select { min-width: 220px; }
 .picker-card .notice { margin: 12px 0 0; }
 .manage-card { margin-top: 18px; }
+.lock-card h2 { margin: 6px 0 8px; font-size: 18px; letter-spacing: -.5px; }
+.lock-card p { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+.lock-form { display: flex; flex-wrap: wrap; gap: 10px; }
+.lock-form input { flex: 1 1 220px; max-width: 320px; height: 42px; padding: 0 12px; border: 1px solid #e3e8ec; border-radius: 7px; outline: 0; background: #fcfdfd; color: #263747; font-size: 13px; }
+.lock-form input:focus { border-color: #7ac7a9; box-shadow: 0 0 0 3px rgb(21 157 114 / 10%); }
 .header-date { padding: 7px 12px; border: 1px solid #dfe6e4; border-radius: 999px; background: #fff; color: #41534e; font-size: 12px; font-weight: 650; white-space: nowrap; }
 .clinic-picker select:disabled { color: #9aa4ad; }
 .tracked-competitors { margin-top: 21px; padding-top: 19px; border-top: 1px solid #edf0f2; }

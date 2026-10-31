@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin';
 import { getSupabaseAdmin, getSupabaseErrorMessage } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id: clinicId } = await context.params;
     const body = await request.json() as CompetitorInput;
