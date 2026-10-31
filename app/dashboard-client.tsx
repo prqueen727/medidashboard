@@ -110,7 +110,7 @@ interface Snapshot {
   created_at: string;
 }
 
-type Tab = 'place' | 'content' | 'competitor' | 'history';
+type Tab = 'place' | 'content' | 'competitor' | 'history' | 'manage';
 type HistoryPeriod = 'day' | 'week' | 'month';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -276,6 +276,12 @@ export default function DashboardClient() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [initializing, setInitializing] = useState(true);
+  const [today, setToday] = useState('');
+
+  // 접속한 날짜(한국 시간). 정적 렌더링과 어긋나지 않도록 브라우저에서 계산한다.
+  useEffect(() => {
+    setToday(new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date()));
+  }, []);
 
   const selectedClinic = clinics.find((clinic) => clinic.id === selectedClinicId);
   const displayedAnalysis = selectedDate === 'today'
@@ -411,6 +417,7 @@ export default function DashboardClient() {
         const { clinics: savedClinics } = await readJson<{ clinics: Clinic[] }>(await fetch('/api/clinics'));
         if (!active) return;
         setClinics(savedClinics);
+        if (!savedClinics.length) setActiveTab('manage');
         if (savedClinics.length) {
           setSelectedClinicId(savedClinics[0].id);
           setForm(toClinicForm(savedClinics[0]));
@@ -503,6 +510,8 @@ export default function DashboardClient() {
       const selectionChanged = clinic.id !== selectedClinicId;
       setSelectedClinicId(clinic.id);
       setForm(toClinicForm(clinic));
+      // 저장 후 분석 결과를 바로 볼 수 있게 첫 탭으로 이동
+      setActiveTab('place');
       if (!selectionChanged) await runAnalysis(clinic, trackedCompetitors);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '병원 정보를 저장하지 못했습니다.');
@@ -716,10 +725,11 @@ export default function DashboardClient() {
       <header className="dashboard-header">
         <div>
           <div className="eyebrow"><span className="live-dot" /> NAVER SEARCH INSIGHT</div>
-          <h1>병원 검색 순위 대시보드</h1>
+          <h1>{selectedClinic ? `${selectedClinic.name} 플레이스 & 통합검색 모니터링` : '병원 검색 순위 대시보드'}</h1>
           <p>플레이스 · 통합검색 콘텐츠 · 경쟁 병원의 검색 현황을 한눈에 확인하세요.</p>
         </div>
         <div className="header-actions">
+          {today && <div className="header-date">{today}</div>}
           <div className="header-status">
             <span className={loading ? 'status-dot is-loading' : 'status-dot'} />
             {initializing ? '불러오는 중' : loading ? '분석 중' : !selectedClinic ? '분석 대기' : notice ? '확인 필요' : '오늘 분석 완료'}
@@ -728,81 +738,14 @@ export default function DashboardClient() {
         </div>
       </header>
 
-      <section className="settings-card no-print">
-        <div className="section-heading">
-          <div>
-            <span className="section-kicker">CLINIC MANAGEMENT</span>
-            <h2>병원 선택 및 설정</h2>
-          </div>
-          <div className="clinic-actions">
-            {selectedClinic && <button className="text-button danger-text" type="button" onClick={() => void handleDeleteClinic()}>병원 삭제</button>}
-            <button className="text-button" type="button" onClick={handleNewClinic}>+ 새 병원 등록</button>
-          </div>
-        </div>
+      <section className="settings-card picker-card no-print">
         <div className="clinic-picker">
           <label htmlFor="clinic-select">분석할 병원</label>
           <select id="clinic-select" value={selectedClinicId} onChange={(event) => handleSelectClinic(event.target.value)} disabled={initializing || clinics.length === 0}>
-            {clinics.length === 0 ? <option value="">등록된 병원이 없습니다</option> : clinics.map((clinic) => <option value={clinic.id} key={clinic.id}>{clinic.name}</option>)}
+            {clinics.length === 0 && <option value="">등록된 병원이 없습니다</option>}
+            {clinics.length > 0 && !selectedClinicId && <option value="">새 병원 등록 중</option>}
+            {clinics.map((clinic) => <option value={clinic.id} key={clinic.id}>{clinic.name}</option>)}
           </select>
-        </div>
-        <form onSubmit={handleSave}>
-          <div className="settings-grid">
-            <label>
-              <span>병원명</span>
-              <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="예: 아우라의원" required />
-            </label>
-            <label>
-              <span>네이버 플레이스 URL 또는 ID</span>
-              <input value={form.placeId} onChange={(event) => setForm({ ...form, placeId: event.target.value })} placeholder="플레이스 URL 또는 숫자 ID" required />
-            </label>
-            <label>
-              <span>공식 블로그</span>
-              <input value={form.blogUrl} onChange={(event) => setForm({ ...form, blogUrl: event.target.value })} placeholder="blog.naver.com/블로그아이디" required />
-            </label>
-            <label>
-              <span>웹 매거진 <small>선택</small></span>
-              <input value={form.magazineUrl} onChange={(event) => setForm({ ...form, magazineUrl: event.target.value })} placeholder="웹 매거진 주소 (예: magazine.example.com)" />
-            </label>
-            <label>
-              <span>홈페이지 <small>선택</small></span>
-              <input value={form.homepageUrl} onChange={(event) => setForm({ ...form, homepageUrl: event.target.value })} placeholder="홈페이지 주소 (예: www.example.com)" />
-            </label>
-            <label>
-              <span>검색용 상호명 <small>선택 · 쉼표로 구분 · 상호명 개수를 셀 때 병원명과 함께 찾습니다</small></span>
-              <input value={form.nameAliases} onChange={(event) => setForm({ ...form, nameAliases: event.target.value })} placeholder="예: 필한방병원, 필한의원" />
-            </label>
-            <label className="wide">
-              <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
-              <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
-            </label>
-          </div>
-          <div className="settings-footer">
-            <p>공용 DB에 저장됩니다. 접속 시 선택 병원을 하루 한 번 자동 분석합니다.</p>
-            <button type="submit" className="primary-button" disabled={saving || loading}>
-              {saving || loading ? <><span className="spinner" /> 저장 중...</> : selectedClinic ? '저장하고 분석하기' : '병원 저장하고 분석하기'}
-            </button>
-          </div>
-        </form>
-        <div className="tracked-competitors">
-          <div className="tracked-heading">
-            <div><span className="section-kicker">COMPETITOR TRACKING</span><h3>추적할 경쟁 병원</h3></div>
-            <span className="count-pill">{trackedCompetitors.length}곳</span>
-          </div>
-          <p className="competitor-help">병원마다 플레이스 ID와 블로그·홈페이지 주소(하나 이상)를 등록하면 저장된 키워드의 순위를 함께 비교하고 날짜별로 기록합니다.</p>
-          <form className="competitor-form" onSubmit={(event) => void handleSaveCompetitor(event)}>
-            <label><span>경쟁 병원명</span><input value={competitorForm.name} onChange={(event) => setCompetitorForm({ ...competitorForm, name: event.target.value })} placeholder="병원명" required disabled={!selectedClinic} /></label>
-            <label><span>플레이스 URL 또는 ID</span><input value={competitorForm.placeId} onChange={(event) => setCompetitorForm({ ...competitorForm, placeId: event.target.value })} placeholder="네이버 플레이스 ID" required disabled={!selectedClinic} /></label>
-            <label><span>블로그</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디" disabled={!selectedClinic} /></label>
-            <label><span>홈페이지</span><input value={competitorForm.homepageUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, homepageUrl: event.target.value })} placeholder="www.example.com" disabled={!selectedClinic} /></label>
-            <button type="submit" className="secondary-button" disabled={!selectedClinic || saving || loading}>{editingCompetitorId ? '수정 저장' : '경쟁 병원 추가'}</button>
-            {editingCompetitorId && <button type="button" className="cancel-button" onClick={() => { setEditingCompetitorId(''); setCompetitorForm(emptyCompetitorForm); }}>취소</button>}
-          </form>
-          {trackedCompetitors.length > 0 && <div className="saved-competitor-list">{trackedCompetitors.map((competitor) => (
-            <div className="saved-competitor" key={competitor.id}>
-              <span><strong>{competitor.name}</strong><small>{[`플레이스 ${competitor.place_id}`, competitor.blog_url, competitor.homepage_url].filter(Boolean).join(' · ')}</small></span>
-              <div><button type="button" className="text-button" onClick={() => handleEditCompetitor(competitor)}>수정</button><button type="button" className="text-button danger-text" onClick={() => void handleDeleteCompetitor(competitor)}>삭제</button></div>
-            </div>
-          ))}</div>}
         </div>
         {notice && <p className="notice" role="status">{notice}</p>}
       </section>
@@ -814,11 +757,12 @@ export default function DashboardClient() {
             <button role="tab" aria-selected={activeTab === 'content'} className={activeTab === 'content' ? 'tab active' : 'tab'} onClick={() => setActiveTab('content')}><span className="tab-index">02</span> 통합검색 콘텐츠</button>
             <button role="tab" aria-selected={activeTab === 'competitor'} className={activeTab === 'competitor' ? 'tab active' : 'tab'} onClick={() => setActiveTab('competitor')}><span className="tab-index">03</span> 경쟁 병원</button>
             <button role="tab" aria-selected={activeTab === 'history'} className={activeTab === 'history' ? 'tab active' : 'tab'} onClick={() => setActiveTab('history')}><span className="tab-index">04</span> 랭크 히스토리</button>
+            <button role="tab" aria-selected={activeTab === 'manage'} className={activeTab === 'manage' ? 'tab active' : 'tab'} onClick={() => setActiveTab('manage')}><span className="tab-index">05</span> 병원 관리</button>
           </div>
         </div>
 
-        {loading && <div className="loading-panel"><span className="spinner large" /><div><strong>네이버 검색 결과를 모으고 있습니다</strong><p>키워드 수와 네이버 응답 속도에 따라 잠시 걸릴 수 있습니다.</p></div></div>}
-        {!loading && !displayedAnalysis && activeTab !== 'history' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '병원을 등록하거나 선택하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
+        {loading && activeTab !== 'manage' && <div className="loading-panel"><span className="spinner large" /><div><strong>네이버 검색 결과를 모으고 있습니다</strong><p>키워드 수와 네이버 응답 속도에 따라 잠시 걸릴 수 있습니다.</p></div></div>}
+        {!loading && !displayedAnalysis && activeTab !== 'history' && activeTab !== 'manage' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '05 병원 관리 탭에서 병원을 등록하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
 
         {!loading && displayedAnalysis && activeTab === 'place' && (
           <div className="rank-rows">
@@ -915,6 +859,80 @@ export default function DashboardClient() {
           <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
         </>}
+
+        {activeTab === 'manage' && (
+          <section className="settings-card manage-card no-print">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">CLINIC MANAGEMENT</span>
+                <h2>{selectedClinic ? `${selectedClinic.name} 정보 수정` : '새 병원 등록'}</h2>
+              </div>
+              <div className="clinic-actions">
+                {selectedClinic && <button className="text-button danger-text" type="button" onClick={() => void handleDeleteClinic()}>병원 삭제</button>}
+                <button className="text-button" type="button" onClick={handleNewClinic}>+ 새 병원 등록</button>
+              </div>
+            </div>
+            <form onSubmit={handleSave}>
+              <div className="settings-grid">
+                <label>
+                  <span>병원명</span>
+                  <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="예: 아우라의원" required />
+                </label>
+                <label>
+                  <span>네이버 플레이스 URL 또는 ID</span>
+                  <input value={form.placeId} onChange={(event) => setForm({ ...form, placeId: event.target.value })} placeholder="플레이스 URL 또는 숫자 ID" required />
+                </label>
+                <label>
+                  <span>공식 블로그</span>
+                  <input value={form.blogUrl} onChange={(event) => setForm({ ...form, blogUrl: event.target.value })} placeholder="blog.naver.com/블로그아이디" required />
+                </label>
+                <label>
+                  <span>웹 매거진 <small>선택</small></span>
+                  <input value={form.magazineUrl} onChange={(event) => setForm({ ...form, magazineUrl: event.target.value })} placeholder="웹 매거진 주소 (예: magazine.example.com)" />
+                </label>
+                <label>
+                  <span>홈페이지 <small>선택</small></span>
+                  <input value={form.homepageUrl} onChange={(event) => setForm({ ...form, homepageUrl: event.target.value })} placeholder="홈페이지 주소 (예: www.example.com)" />
+                </label>
+                <label>
+                  <span>검색용 상호명 <small>선택 · 쉼표로 구분 · 상호명 개수를 셀 때 병원명과 함께 찾습니다</small></span>
+                  <input value={form.nameAliases} onChange={(event) => setForm({ ...form, nameAliases: event.target.value })} placeholder="예: 필한방병원, 필한의원" />
+                </label>
+                <label className="wide">
+                  <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
+                  <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
+                </label>
+              </div>
+              <div className="settings-footer">
+                <p>공용 DB에 저장됩니다. 접속 시 선택 병원을 하루 한 번 자동 분석합니다.</p>
+                <button type="submit" className="primary-button" disabled={saving || loading}>
+                  {saving || loading ? <><span className="spinner" /> 저장 중...</> : selectedClinic ? '저장하고 분석하기' : '병원 저장하고 분석하기'}
+                </button>
+              </div>
+            </form>
+            <div className="tracked-competitors">
+              <div className="tracked-heading">
+                <div><span className="section-kicker">COMPETITOR TRACKING</span><h3>추적할 경쟁 병원</h3></div>
+                <span className="count-pill">{trackedCompetitors.length}곳</span>
+              </div>
+              <p className="competitor-help">병원마다 플레이스 ID와 블로그·홈페이지 주소(하나 이상)를 등록하면 저장된 키워드의 순위를 함께 비교하고 날짜별로 기록합니다.</p>
+              <form className="competitor-form" onSubmit={(event) => void handleSaveCompetitor(event)}>
+                <label><span>경쟁 병원명</span><input value={competitorForm.name} onChange={(event) => setCompetitorForm({ ...competitorForm, name: event.target.value })} placeholder="병원명" required disabled={!selectedClinic} /></label>
+                <label><span>플레이스 URL 또는 ID</span><input value={competitorForm.placeId} onChange={(event) => setCompetitorForm({ ...competitorForm, placeId: event.target.value })} placeholder="네이버 플레이스 ID" required disabled={!selectedClinic} /></label>
+                <label><span>블로그</span><input value={competitorForm.blogUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, blogUrl: event.target.value })} placeholder="blog.naver.com/아이디" disabled={!selectedClinic} /></label>
+                <label><span>홈페이지</span><input value={competitorForm.homepageUrl} onChange={(event) => setCompetitorForm({ ...competitorForm, homepageUrl: event.target.value })} placeholder="www.example.com" disabled={!selectedClinic} /></label>
+                <button type="submit" className="secondary-button" disabled={!selectedClinic || saving || loading}>{editingCompetitorId ? '수정 저장' : '경쟁 병원 추가'}</button>
+                {editingCompetitorId && <button type="button" className="cancel-button" onClick={() => { setEditingCompetitorId(''); setCompetitorForm(emptyCompetitorForm); }}>취소</button>}
+              </form>
+              {trackedCompetitors.length > 0 && <div className="saved-competitor-list">{trackedCompetitors.map((competitor) => (
+                <div className="saved-competitor" key={competitor.id}>
+                  <span><strong>{competitor.name}</strong><small>{[`플레이스 ${competitor.place_id}`, competitor.blog_url, competitor.homepage_url].filter(Boolean).join(' · ')}</small></span>
+                  <div><button type="button" className="text-button" onClick={() => handleEditCompetitor(competitor)}>수정</button><button type="button" className="text-button danger-text" onClick={() => void handleDeleteCompetitor(competitor)}>삭제</button></div>
+                </div>
+              ))}</div>}
+            </div>
+          </section>
+        )}
 
         {activeTab === 'history' && (
           <section className="history-section">
