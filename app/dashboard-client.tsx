@@ -271,7 +271,7 @@ export default function DashboardClient() {
   const [selectedDate, setSelectedDate] = useState('today');
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('day');
   const [historyKey, setHistoryKey] = useState('');
-  const [historyMetric, setHistoryMetric] = useState<CompareMetric>('place');
+  const [printAll, setPrintAll] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -289,6 +289,19 @@ export default function DashboardClient() {
       // 저장소를 쓸 수 없으면 매번 비밀번호를 입력받는다
     }
   }, []);
+
+  // PDF로 저장: 모든 탭을 펼쳐 그린 뒤 인쇄하고, 인쇄 창이 닫히면 원래 화면으로 돌아간다
+  useEffect(() => {
+    if (!printAll) return;
+    const reset = () => setPrintAll(false);
+    window.addEventListener('afterprint', reset);
+    // 그래프가 너비를 잰 다음 인쇄되도록 잠시 기다린다
+    const timer = window.setTimeout(() => window.print(), 400);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('afterprint', reset);
+    };
+  }, [printAll]);
 
   const lockAdmin = useCallback(() => {
     setAdminPassword('');
@@ -787,7 +800,7 @@ export default function DashboardClient() {
             <span className={loading ? 'status-dot is-loading' : 'status-dot'} />
             {initializing ? '불러오는 중' : loading ? '분석 중' : !selectedClinic ? '분석 대기' : notice ? '확인 필요' : '오늘 분석 완료'}
           </div>
-          <button type="button" className="pdf-button" onClick={() => window.print()} disabled={!displayedAnalysis}>PDF로 저장</button>
+          <button type="button" className="pdf-button" onClick={() => setPrintAll(true)} disabled={!displayedAnalysis || printAll}>PDF로 저장</button>
         </div>
       </header>
 
@@ -817,7 +830,8 @@ export default function DashboardClient() {
         {loading && activeTab !== 'manage' && <div className="loading-panel"><span className="spinner large" /><div><strong>네이버 검색 결과를 모으고 있습니다</strong><p>키워드 수와 네이버 응답 속도에 따라 잠시 걸릴 수 있습니다.</p></div></div>}
         {!loading && !displayedAnalysis && activeTab !== 'history' && activeTab !== 'manage' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '05 병원 관리 탭에서 병원을 등록하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
 
-        {!loading && displayedAnalysis && activeTab === 'place' && (
+        {printAll && <h2 className="print-section-title first">01 플레이스 &amp; 콘텐츠 순위</h2>}
+        {!loading && displayedAnalysis && (activeTab === 'place' || printAll) && (
           <div className="rank-rows">
             {displayedAnalysis.keywordResults.map((item) => (
               <div className="rank-pair" key={item.keyword}>
@@ -851,7 +865,8 @@ export default function DashboardClient() {
           </div>
         )}
 
-        {!loading && displayedAnalysis && activeTab === 'content' && (
+        {printAll && <h2 className="print-section-title">02 통합검색 콘텐츠</h2>}
+        {!loading && displayedAnalysis && (activeTab === 'content' || printAll) && (
           <div className="keyword-panels">
             {displayedAnalysis.keywordResults.map((item) => {
               const blogKey = selectedClinic ? getAccountKey(selectedClinic.blog_url) : '';
@@ -880,7 +895,8 @@ export default function DashboardClient() {
           </div>
         )}
 
-        {!loading && displayedAnalysis && activeTab === 'competitor' && (
+        {printAll && <h2 className="print-section-title">03 경쟁 병원</h2>}
+        {!loading && displayedAnalysis && (activeTab === 'competitor' || printAll) && (
           <>
             {trackedCompetitors.length > 0 ? <>
               {renderComparison(displayedAnalysis, 'place')}
@@ -907,7 +923,8 @@ export default function DashboardClient() {
           </>
         )}
 
-        {selectedClinic && (activeTab === 'place' || activeTab === 'content') && <>
+        {printAll && <h2 className="print-section-title">순위 변동 그래프</h2>}
+        {selectedClinic && (activeTab === 'place' || activeTab === 'content' || printAll) && <>
           <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
           <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
@@ -1000,7 +1017,8 @@ export default function DashboardClient() {
           </section>
         )}
 
-        {activeTab === 'history' && (
+        {printAll && <h2 className="print-section-title">04 랭크 히스토리</h2>}
+        {(activeTab === 'history' || printAll) && (
           <section className="history-section">
             <div className="history-heading">
               <div><span className="section-kicker">RANK HISTORY</span><h2>{selectedClinic?.name ?? '병원'} 랭크 히스토리</h2></div>
@@ -1016,12 +1034,6 @@ export default function DashboardClient() {
                   <select className="compare-select" value={activeHistoryKey} onChange={(event) => setHistoryKey(event.target.value)} aria-label="조회 기간">
                     {historyKeys.map((key) => <option key={key} value={key}>{formatPeriodKey(key, historyPeriod)}</option>)}
                   </select>
-                )}
-                {historyPeriod !== 'day' && (
-                  <div className="trend-metric" role="group" aria-label="순위 종류">
-                    <button type="button" className={historyMetric === 'place' ? 'active' : ''} onClick={() => setHistoryMetric('place')}>플레이스</button>
-                    <button type="button" className={historyMetric === 'content' ? 'active' : ''} onClick={() => setHistoryMetric('content')}>콘텐츠</button>
-                  </div>
                 )}
               </div>
             </div>
@@ -1065,14 +1077,15 @@ export default function DashboardClient() {
                   return result;
                 })();
               const allDates = columns.flatMap((column) => column.dates);
-              const cell = (keyword: string, dates: string[]) => {
+              const cell = (keyword: string, dates: string[], metric: CompareMetric) => {
                 const recorded = dates.flatMap((date) => byDate.get(date) ?? []);
                 if (!recorded.length) return <span className="rank-out">-</span>;
-                const rank = bestRank(...recorded.map((snapshot) => getKeywordRank(snapshot.payload.keywordResults.find((item) => item.keyword === keyword), historyMetric)));
+                const rank = bestRank(...recorded.map((snapshot) => getKeywordRank(snapshot.payload.keywordResults.find((item) => item.keyword === keyword), metric)));
                 return rank ? `${rank}위` : <span className="rank-out">순위권 외</span>;
               };
-              return (
-                <div className="history-table-wrap">
+              return (['place', 'content'] as const).map((metric) => (
+                <div className="history-table-wrap period-block" key={metric}>
+                  <h3 className="period-title">{metric === 'place' ? '플레이스 순위' : '콘텐츠 순위'}</h3>
                   <table className="history-table period-table">
                     <thead><tr>
                       <th>검색 키워드</th>
@@ -1082,17 +1095,17 @@ export default function DashboardClient() {
                     <tbody>{selectedClinic.keywords.map((keyword) => (
                       <tr key={keyword}>
                         <td>{keyword}</td>
-                        {columns.map((column) => <td key={column.key}>{cell(keyword, column.dates)}</td>)}
-                        <td><strong>{cell(keyword, allDates)}</strong></td>
+                        {columns.map((column) => <td key={column.key}>{cell(keyword, column.dates, metric)}</td>)}
+                        <td><strong>{cell(keyword, allDates, metric)}</strong></td>
                       </tr>
                     ))}</tbody>
                   </table>
                 </div>
-              );
+              ));
             })()}
             <p className="result-footnote">{historyPeriod === 'day'
               ? '선택한 날짜의 분석 결과입니다.'
-              : `${historyPeriod === 'week' ? '요일' : '주차'}별로 기록된 가장 높은 ${historyMetric === 'place' ? '플레이스' : '콘텐츠'} 순위입니다. "-"는 분석 기록이 없는 기간입니다.`} 최근 90일까지 조회할 수 있습니다.</p>
+              : `${historyPeriod === 'week' ? '요일' : '주차'}별로 기록된 가장 높은 순위입니다. 콘텐츠 순위는 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위입니다. "-"는 분석 기록이 없는 기간입니다.`} 최근 90일까지 조회할 수 있습니다.</p>
           </section>
         )}
       </section>
