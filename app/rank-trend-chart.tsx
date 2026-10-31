@@ -1,35 +1,22 @@
 'use client';
 
-import { PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { PointerEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
-interface TrendKeywordResult {
-  keyword: string;
-  placeRank?: { rank: number | null };
-  integratedRank?: number | null;
-  magazineRank?: number | null;
-  homepageRank?: number | null;
+export interface TrendOption {
+  id: string;
+  label: string;
 }
 
-interface TrendSnapshot {
-  snapshot_date: string;
-  payload: { keywordResults: TrendKeywordResult[] };
+export interface TrendPoint {
+  date: string;
+  values: Record<string, number | null>;
 }
 
-type Metric = 'place' | 'blog' | 'magazine' | 'homepage';
-
-// 검증된 범주형 팔레트(고정 순서). 키워드 색은 선택 시 배정된 슬롯을 계속 유지한다.
+// 검증된 범주형 팔레트(고정 순서). 항목 색은 선택 시 배정된 슬롯을 계속 유지한다.
 const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const MAX_POINTS = 10;
-const DEFAULT_SERIES = 3;
 const HEIGHT = 300;
 const MARGIN = { top: 28, right: 24, bottom: 34, left: 44 };
-
-function getRank(item: TrendKeywordResult | undefined, metric: Metric) {
-  if (!item) return null;
-  if (metric === 'place') return item.placeRank?.rank ?? null;
-  if (metric === 'blog') return item.integratedRank ?? null;
-  return (metric === 'magazine' ? item.magazineRank : item.homepageRank) ?? null;
-}
 
 function formatShortDate(value: string) {
   const [, month, day] = value.split('-');
@@ -54,20 +41,24 @@ function smoothPath(points: { x: number; y: number }[]) {
   }, '');
 }
 
-export default function RankTrendChart({ snapshots, keywords, metric, title }: {
-  snapshots: TrendSnapshot[];
-  keywords: string[];
-  metric: Metric;
+export default function RankTrendChart({ title, kicker = 'RANK TREND', data, options, defaultCount = 3, actions }: {
   title: string;
+  kicker?: string;
+  data: TrendPoint[];
+  options: TrendOption[];
+  defaultCount?: number;
+  actions?: ReactNode;
 }) {
   const [slots, setSlots] = useState<(string | null)[]>([]);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [width, setWidth] = useState(800);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const optionKey = options.map((option) => option.id).join('\n');
 
   useEffect(() => {
-    setSlots(Array.from({ length: SERIES_COLORS.length }, (_, index) => index < DEFAULT_SERIES ? keywords[index] ?? null : null));
-  }, [keywords]);
+    const ids = optionKey ? optionKey.split('\n') : [];
+    setSlots(Array.from({ length: SERIES_COLORS.length }, (_, index) => index < defaultCount ? ids[index] ?? null : null));
+  }, [optionKey, defaultCount]);
 
   useEffect(() => {
     const element = wrapRef.current;
@@ -77,15 +68,12 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
     return () => observer.disconnect();
   }, []);
 
-  const points = useMemo(() => [...snapshots]
-    .sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date))
-    .slice(-MAX_POINTS), [snapshots]);
+  const points = useMemo(() => [...data].sort((a, b) => a.date.localeCompare(b.date)).slice(-MAX_POINTS), [data]);
 
-  const series = slots.flatMap((keyword, slot) => keyword ? [{
-    keyword,
-    color: SERIES_COLORS[slot],
-    ranks: points.map((snapshot) => getRank(snapshot.payload.keywordResults.find((item) => item.keyword === keyword), metric)),
-  }] : []);
+  const series = slots.flatMap((id, slot) => {
+    const option = id ? options.find((item) => item.id === id) : undefined;
+    return option ? [{ ...option, color: SERIES_COLORS[slot], ranks: points.map((point) => point.values[option.id] ?? null) }] : [];
+  });
 
   const maxRank = Math.max(5, ...series.flatMap((item) => item.ranks.filter((rank): rank is number => rank !== null)));
   const plotWidth = width - MARGIN.left - MARGIN.right;
@@ -95,12 +83,12 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
   const tickStep = Math.ceil(maxRank / 8);
   const ticks = Array.from({ length: maxRank }, (_, index) => index + 1).filter((rank) => rank === 1 || rank % tickStep === 0);
 
-  const toggleKeyword = (keyword: string) => {
+  const toggleOption = (id: string) => {
     setSlots((previous) => {
-      const current = previous.indexOf(keyword);
+      const current = previous.indexOf(id);
       if (current >= 0) return previous.map((item, index) => index === current ? null : item);
       const free = previous.indexOf(null);
-      return free < 0 ? previous : previous.map((item, index) => index === free ? keyword : item);
+      return free < 0 ? previous : previous.map((item, index) => index === free ? id : item);
     });
   };
 
@@ -116,17 +104,18 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
   return (
     <section className="trend-section">
       <div className="history-heading">
-        <div><span className="section-kicker">RANK TREND</span><h2>{title}</h2></div>
+        <div><span className="section-kicker">{kicker}</span><h2>{title}</h2></div>
+        {actions}
       </div>
-      <p className="history-caption">최근 수집된 데이터 기준 (최대 {MAX_POINTS}개) · 키워드를 눌러 최대 {SERIES_COLORS.length}개까지 비교할 수 있습니다.</p>
+      <p className="history-caption">최근 수집된 데이터 기준 (최대 {MAX_POINTS}개) · 항목을 눌러 최대 {SERIES_COLORS.length}개까지 비교할 수 있습니다.</p>
 
       <div className="trend-legend">
-        {keywords.map((keyword) => {
-          const slot = slots.indexOf(keyword);
+        {options.map((option) => {
+          const slot = slots.indexOf(option.id);
           return (
-            <button type="button" key={keyword} className={slot >= 0 ? 'trend-chip active' : 'trend-chip'} onClick={() => toggleKeyword(keyword)}
+            <button type="button" key={option.id} className={slot >= 0 ? 'trend-chip active' : 'trend-chip'} onClick={() => toggleOption(option.id)}
               disabled={slot < 0 && !slots.includes(null)} aria-pressed={slot >= 0}>
-              <span className="trend-swatch" style={{ background: slot >= 0 ? SERIES_COLORS[slot] : 'transparent' }} />{keyword}
+              <span className="trend-swatch" style={{ background: slot >= 0 ? SERIES_COLORS[slot] : 'transparent' }} />{option.label}
             </button>
           );
         })}
@@ -134,15 +123,15 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
 
       <div className="trend-chart" ref={wrapRef}>
         {points.length === 0 ? <p className="no-results">아직 저장된 순위 기록이 없습니다.</p> : (
-          <svg width={width} height={HEIGHT} role="img" aria-label={`키워드별 ${title}`}>
+          <svg width={width} height={HEIGHT} role="img" aria-label={title}>
             {ticks.map((rank) => (
               <g key={rank}>
                 <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(rank)} y2={y(rank)} className="trend-grid" />
                 <text x={MARGIN.left - 10} y={y(rank)} className="trend-axis" textAnchor="end" dominantBaseline="middle">{rank}위</text>
               </g>
             ))}
-            {points.map((snapshot, index) => (
-              <text key={snapshot.snapshot_date} x={x(index)} y={HEIGHT - 10} className="trend-axis" textAnchor="middle">{formatShortDate(snapshot.snapshot_date)}</text>
+            {points.map((point, index) => (
+              <text key={point.date} x={x(index)} y={HEIGHT - 10} className="trend-axis" textAnchor="middle">{formatShortDate(point.date)}</text>
             ))}
             {hovered && <line x1={x(hoverIndex!)} x2={x(hoverIndex!)} y1={MARGIN.top - 8} y2={MARGIN.top + plotHeight} className="trend-crosshair" />}
             {series.map((item, seriesIndex) => {
@@ -153,7 +142,7 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
                 else segments[segments.length - 1].push({ x: x(index), y: y(rank) });
               });
               return (
-                <g key={item.keyword}>
+                <g key={item.id}>
                   {segments.filter((segment) => segment.length > 1).map((segment, index) => (
                     <path key={index} d={smoothPath(segment)} fill="none" stroke={item.color} strokeWidth={2} strokeLinecap="round" />
                   ))}
@@ -175,9 +164,9 @@ export default function RankTrendChart({ snapshots, keywords, metric, title }: {
         )}
         {hovered && series.length > 0 && (
           <div className="trend-tooltip" style={{ left: Math.min(x(hoverIndex!) + 12, width - 190), top: MARGIN.top }}>
-            <strong>{formatShortDate(hovered.snapshot_date)}</strong>
+            <strong>{formatShortDate(hovered.date)}</strong>
             {series.map((item) => (
-              <span key={item.keyword}><i style={{ background: item.color }} />{item.keyword}<b>{item.ranks[hoverIndex!] ? `${item.ranks[hoverIndex!]}위` : '순위권 외'}</b></span>
+              <span key={item.id}><i style={{ background: item.color }} />{item.label}<b>{item.ranks[hoverIndex!] ? `${item.ranks[hoverIndex!]}위` : '순위권 외'}</b></span>
             ))}
           </div>
         )}

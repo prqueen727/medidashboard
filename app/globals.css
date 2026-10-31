@@ -141,6 +141,21 @@ button { cursor: pointer; }
 .trend-section { margin-top: 30px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 7px 26px rgb(34 51 67 / 3%); }
 .trend-section .history-heading { margin-bottom: 4px; }
 .trend-section + .trend-section { margin-top: 16px; }
+.trend-metric { display: flex; padding: 3px; border-radius: 8px; background: #f0f3f5; }
+.trend-metric button { padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: #748092; font-size: 11px; font-weight: 650; cursor: pointer; }
+.trend-metric button.active { background: #fff; color: #293a4a; box-shadow: 0 1px 3px rgb(34 51 67 / 12%); }
+.compare-select { height: 32px; padding: 0 10px; border: 1px solid #e3e8ec; border-radius: 7px; background: #fff; color: #293a4a; font-size: 12px; }
+.compare-table th, .compare-table td { text-align: center; }
+.compare-table th:first-child, .compare-table td:first-child { text-align: left; }
+.compare-head { display: inline-block; padding: 3px 8px; border-radius: 5px; background: #f0f3f5; color: #3d4c59; }
+.compare-head.mine { background: #e3eefb; color: #1f62b3; }
+.compare-mine { color: #293a4a; font-size: 12px; }
+.rank-compare { display: inline-flex; align-items: center; gap: 6px; color: #596774; }
+.rank-gap { font-size: 10px; font-weight: 650; }
+.rank-gap.lower { color: #168960; }
+.rank-gap.higher { color: #d03a55; }
+.rank-gap.same { color: #98a2aa; }
+.places-card { margin-top: 16px; }
 .dual-rank { display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .dual-rank > div { display: flex; flex-direction: column; }
 .dual-rank small { color: #8994a0; font-size: 10px; font-weight: 650; }

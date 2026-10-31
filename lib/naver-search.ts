@@ -65,7 +65,8 @@ function stripTags(value: string) {
   return decodeEntities(value.replace(/<[^>]*>/g, '')).replace(/새 창 열림/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// 통합검색 플레이스 영역의 업체를 광고 포함 노출 순서대로 추출
+// 통합검색 플레이스 영역의 업체를 노출 순서대로 추출 (광고 제외)
+// 광고는 검색 위치에 따라 노출 여부가 달라서(해외 서버에는 미노출) 순위 계산에서 뺀다
 export function parsePlaces(html: string): PlaceItem[] {
   const places: PlaceItem[] = [];
   const seen = new Set<string>();
@@ -77,7 +78,7 @@ export function parsePlaces(html: string): PlaceItem[] {
 
   starts.forEach(({ index, docId }, position) => {
     const placeId = docId.split('_')[0];
-    if (!/^\d+$/.test(placeId) || seen.has(docId)) return;
+    if (!/^\d+$/.test(placeId) || seen.has(docId) || docId.includes('_nad-')) return;
     seen.add(docId);
     const segment = html.slice(index, starts[position + 1]?.index ?? index + 8000);
     const name = segment.match(/data-nlog-area="[^"]*\.list"[^>]*>\s*<span[^>]*>([\s\S]*?)<\/span>/)?.[1];
@@ -85,7 +86,7 @@ export function parsePlaces(html: string): PlaceItem[] {
       rank: places.length + 1,
       placeId,
       name: name ? stripTags(name) : '',
-      isAd: docId.includes('_nad-'),
+      isAd: false,
     });
   });
 
