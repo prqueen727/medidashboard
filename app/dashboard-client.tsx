@@ -157,18 +157,24 @@ function normalizeName(value: string) {
   return value.toLowerCase().replace(/[\s·.,()[\]-]/g, '');
 }
 
-// 통합검색 콘텐츠 중 블로그명·제목·설명에 상호명(또는 별칭)이 들어간 항목
-function getNameMentions(item: KeywordResult, names: string[]) {
-  const targets = names.map(normalizeName).filter(Boolean);
-  return targets.length ? (item.contents ?? []).filter((content) =>
-    [content.source, content.title, content.description].some((text) => {
-      const normalized = text ? normalizeName(text) : '';
-      return normalized && targets.some((target) => normalized.includes(target));
-    })) : [];
+interface NameTarget {
+  names: string[];
+  urls: (string | null | undefined)[];
 }
 
-function clinicNames(clinic: Clinic) {
-  return [clinic.name, ...(clinic.name_aliases ?? [])];
+// 통합검색 콘텐츠 중 내 블로그·매거진·홈페이지 노출이거나, 블로그명·제목·설명에 상호명(또는 별칭)이 들어간 항목
+function getNameMentions(item: KeywordResult, { names, urls }: NameTarget) {
+  const targets = names.map(normalizeName).filter(Boolean);
+  const keys = urls.map((url) => url ? getAccountKey(url) : '').filter(Boolean);
+  return (item.contents ?? []).filter((content) =>
+    keys.includes(content.key) || [content.source, content.title, content.description].some((text) => {
+      const normalized = text ? normalizeName(text) : '';
+      return normalized && targets.some((target) => normalized.includes(target));
+    }));
+}
+
+function clinicNames(clinic: Clinic): NameTarget {
+  return { names: [clinic.name, ...(clinic.name_aliases ?? [])], urls: [clinic.blog_url, clinic.magazine_url, clinic.homepage_url] };
 }
 
 // 상호명 노출 개수를 내 병원과 비교한 차이
@@ -702,12 +708,12 @@ export default function DashboardClient() {
 
   const renderMentions = (analysis: Analysis) => {
     const clinics = [
-      { id: 'clinic', name: selectedClinic?.name ?? '', names: selectedClinic ? clinicNames(selectedClinic) : [] },
-      ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name, names: [competitor.name] })),
+      { id: 'clinic', name: selectedClinic?.name ?? '', target: selectedClinic ? clinicNames(selectedClinic) : { names: [], urls: [] } },
+      ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name, target: { names: [competitor.name], urls: [competitor.blog_url, competitor.homepage_url] } })),
     ];
     const rows = analysis.keywordResults.map((item) => ({
       item,
-      mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.names)) : null,
+      mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.target)) : null,
     }));
     const totals = clinics.map((_, index) => rows.reduce((sum, row) => sum + (row.mentions?.[index].length ?? 0), 0));
     const cellTitle = (mentions: ContentItem[]) => mentions.map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined;
@@ -920,14 +926,6 @@ export default function DashboardClient() {
         {printAll && <h2 className="print-section-title">03 경쟁 병원</h2>}
         {!loading && displayedAnalysis && (activeTab === 'competitor' || printAll) && (
           <>
-            {trackedCompetitors.length > 0 ? <>
-              {renderComparison(displayedAnalysis, 'place')}
-              {renderComparison(displayedAnalysis, 'content')}
-              {renderMentions(displayedAnalysis)}
-            </> : <div className="list-card competitor-card">
-              <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>
-              <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 플레이스·콘텐츠 순위를 키워드별로 비교합니다.</p>
-            </div>}
             {displayedAnalysis.competitors.length > 0 && <div className="list-card competitor-card places-card">
               <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{selectedClinic?.keywords[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
               <div className="competitor-list">{displayedAnalysis.competitors.map((competitor) => {
@@ -939,6 +937,14 @@ export default function DashboardClient() {
                 </div>;
               })}</div>
               <p className="result-footnote">경쟁 병원으로 등록할 곳을 고를 때 참고하세요. 플레이스 ID는 ↗ 링크 주소의 숫자입니다.</p>
+            </div>}
+            {trackedCompetitors.length > 0 ? <>
+              {renderComparison(displayedAnalysis, 'place')}
+              {renderComparison(displayedAnalysis, 'content')}
+              {renderMentions(displayedAnalysis)}
+            </> : <div className="list-card competitor-card">
+              <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>
+              <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 플레이스·콘텐츠 순위를 키워드별로 비교합니다.</p>
             </div>}
           </>
         )}
