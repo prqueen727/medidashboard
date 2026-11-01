@@ -924,24 +924,22 @@ export default function DashboardClient() {
               {renderComparison(displayedAnalysis, 'place')}
               {renderComparison(displayedAnalysis, 'content')}
               {renderMentions(displayedAnalysis)}
-            </> : <>
-              <div className="list-card competitor-card">
-                <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>
-                <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 플레이스·콘텐츠 순위를 키워드별로 비교합니다.</p>
-              </div>
-              {displayedAnalysis.competitors.length > 0 && <div className="list-card competitor-card places-card">
-                <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{selectedClinic?.keywords[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
-                <div className="competitor-list">{displayedAnalysis.competitors.map((competitor) => {
-                  const isMine = competitor.placeId === selectedClinic?.place_id;
-                  return <div className={isMine ? 'competitor-row mine' : 'competitor-row'} key={`${competitor.rank}-${competitor.placeId ?? competitor.name}`}>
-                    <span className="competitor-rank">{String(competitor.rank).padStart(2, '0')}</span>
-                    <span className="competitor-name">{competitor.name}{isMine && <span className="mine-tag">내 병원</span>}</span>
-                    {competitor.href && <a href={competitor.href} target="_blank" rel="noreferrer" className="row-arrow" aria-label={`${competitor.name} 플레이스 열기`}>↗</a>}
-                  </div>;
-                })}</div>
-                <p className="result-footnote">경쟁 병원으로 등록할 곳을 고를 때 참고하세요. 플레이스 ID는 ↗ 링크 주소의 숫자입니다.</p>
-              </div>}
-            </>}
+            </> : <div className="list-card competitor-card">
+              <div className="list-heading"><div><span className="section-kicker">COMPETITOR COMPARISON</span><h3>키워드별 순위 비교</h3></div></div>
+              <p className="no-results">위의 &apos;추적할 경쟁 병원&apos;에서 경쟁 병원을 등록하면 플레이스·콘텐츠 순위를 키워드별로 비교합니다.</p>
+            </div>}
+            {displayedAnalysis.competitors.length > 0 && <div className="list-card competitor-card places-card">
+              <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{selectedClinic?.keywords[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
+              <div className="competitor-list">{displayedAnalysis.competitors.map((competitor) => {
+                const isMine = competitor.placeId === selectedClinic?.place_id;
+                return <div className={isMine ? 'competitor-row mine' : 'competitor-row'} key={`${competitor.rank}-${competitor.placeId ?? competitor.name}`}>
+                  <span className="competitor-rank">{String(competitor.rank).padStart(2, '0')}</span>
+                  <span className="competitor-name">{competitor.name}{isMine && <span className="mine-tag">내 병원</span>}</span>
+                  {competitor.href && <a href={competitor.href} target="_blank" rel="noreferrer" className="row-arrow" aria-label={`${competitor.name} 플레이스 열기`}>↗</a>}
+                </div>;
+              })}</div>
+              <p className="result-footnote">경쟁 병원으로 등록할 곳을 고를 때 참고하세요. 플레이스 ID는 ↗ 링크 주소의 숫자입니다.</p>
+            </div>}
           </>
         )}
 
