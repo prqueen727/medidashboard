@@ -185,6 +185,8 @@ button { cursor: pointer; }
 .dual-rank small { color: #8994a0; font-size: 10px; font-weight: 650; }
 .dual-rank .magazine .rank-value { color: #2a78d6; }
 .dual-rank .homepage .rank-value { color: #6250d6; }
+.dual-rank .extra-0 .rank-value { color: #c4661a; }
+.dual-rank .extra-1 .rank-value { color: #148583; }
 .dual-rank .mentions { margin-left: 8px; padding-left: 22px; border-left: 1px solid #edf0f2; }
 .dual-rank .mentions .rank-value { color: #293a4a; }
 .content-ranks { display: inline-flex; flex-wrap: wrap; gap: 6px; }
@@ -192,6 +194,12 @@ button { cursor: pointer; }
 .content-rank.blog, .own-tag.blog { background: #deefe6; color: #168960; }
 .content-rank.magazine, .own-tag.magazine { background: #e3eefb; color: #1f62b3; }
 .content-rank.homepage, .own-tag.homepage { background: #ebe8fa; color: #5040b8; }
+.content-rank.extra-0, .own-tag.extra-0 { background: #fbeedf; color: #a5530f; }
+.content-rank.extra-1, .own-tag.extra-1 { background: #dcf1f0; color: #0f6b69; }
+.settings-grid .extra-channel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 18px; align-items: end; }
+.settings-grid .extra-channel .text-button { height: 42px; }
+.settings-grid .add-channel { justify-self: start; padding: 0; color: #168960; font-weight: 650; }
+.settings-grid .add-channel small { margin-left: 5px; color: #99a2ac; font-weight: 400; }
 .own-tag { margin-left: 6px; font-size: 9px; }
 .trend-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 6px; }
 .trend-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid #e5e9ec; border-radius: 999px; background: #fff; color: #8994a0; font-size: 11px; cursor: pointer; }
@@ -236,6 +244,8 @@ button { cursor: pointer; }
   .competitor-form { grid-template-columns: 1fr; }
   .secondary-button, .cancel-button { width: 100%; }
   .settings-grid { grid-template-columns: 1fr; gap: 13px; }
+  .settings-grid .extra-channel { grid-template-columns: 1fr; gap: 13px; }
+  .settings-grid .extra-channel .text-button { justify-self: start; height: auto; }
   .settings-footer { align-items: flex-start; flex-direction: column; }
   .primary-button { width: 100%; }
   .results-toolbar { align-items: flex-start; flex-direction: column; }

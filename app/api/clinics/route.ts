@@ -10,6 +10,7 @@ interface ClinicInput {
   blogUrl?: unknown;
   magazineUrl?: unknown;
   homepageUrl?: unknown;
+  extraChannels?: unknown;
   nameAliases?: unknown;
   isHidden?: unknown;
   keywords?: unknown;
@@ -23,6 +24,17 @@ function parseClinic(input: ClinicInput) {
   const blogUrl = typeof input.blogUrl === 'string' ? input.blogUrl.trim() : '';
   const magazineUrl = typeof input.magazineUrl === 'string' ? input.magazineUrl.trim() : '';
   const homepageUrl = typeof input.homepageUrl === 'string' ? input.homepageUrl.trim() : '';
+  // 홈페이지·매거진 외에 함께 분석할 채널 (주소가 빈 줄은 버린다)
+  const extraChannels = (Array.isArray(input.extraChannels) ? input.extraChannels as unknown[] : [])
+    .map((item) => {
+      const channel = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+      return {
+        label: typeof channel.label === 'string' ? channel.label.trim() : '',
+        url: typeof channel.url === 'string' ? channel.url.trim() : '',
+      };
+    })
+    .filter((channel) => channel.url)
+    .map((channel, index) => ({ label: channel.label || `추가 채널 ${index + 1}`, url: channel.url }));
   const nameAliases = Array.isArray(input.nameAliases)
     ? [...new Set(input.nameAliases.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
     : [];
@@ -37,6 +49,10 @@ function parseClinic(input: ClinicInput) {
   if (!blogUrl || blogUrl.length > 500) return { error: '공식 블로그 주소를 입력해주세요.' };
   if (magazineUrl.length > 500) return { error: '웹 매거진 주소는 500자 이내로 입력해주세요.' };
   if (homepageUrl.length > 500) return { error: '홈페이지 주소는 500자 이내로 입력해주세요.' };
+  if (extraChannels.length > 2) return { error: '추가 채널은 2개까지 등록할 수 있습니다.' };
+  if (extraChannels.some((channel) => channel.label.length > 20 || channel.url.length > 500)) {
+    return { error: '추가 채널 이름은 20자, 주소는 500자 이내로 입력해주세요.' };
+  }
   if (nameAliases.length > 10 || nameAliases.some((alias) => alias.length > 100)) {
     return { error: '검색용 상호명은 10개까지, 각 100자 이내로 입력해주세요.' };
   }
@@ -44,7 +60,7 @@ function parseClinic(input: ClinicInput) {
     return { error: '검색 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
   }
 
-  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, name_aliases: nameAliases, is_hidden: input.isHidden === true, keywords } };
+  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, extra_channels: extraChannels, name_aliases: nameAliases, is_hidden: input.isHidden === true, keywords } };
 }
 
 export async function GET(request: NextRequest) {

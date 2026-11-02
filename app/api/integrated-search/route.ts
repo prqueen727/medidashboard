@@ -10,13 +10,14 @@ interface Target {
   blogUrl: string;
   magazineUrl?: string;
   homepageUrl?: string;
+  extraUrls?: string[];
 }
 
 interface KeywordSearchResult {
   keyword: string;
   places: PlaceItem[];
   contents: ContentItem[];
-  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null }>;
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null; extraRanks: (number | null)[] }>;
   error?: string;
 }
 
@@ -30,7 +31,9 @@ function isTarget(value: unknown): value is Target {
   const target = value as Record<string, unknown>;
   return typeof target.id === 'string' && typeof target.placeId === 'string' && typeof target.blogUrl === 'string'
     && (target.magazineUrl === undefined || typeof target.magazineUrl === 'string')
-    && (target.homepageUrl === undefined || typeof target.homepageUrl === 'string');
+    && (target.homepageUrl === undefined || typeof target.homepageUrl === 'string')
+    && (target.extraUrls === undefined || (Array.isArray(target.extraUrls) && target.extraUrls.length <= 2
+      && target.extraUrls.every((url) => typeof url === 'string')));
 }
 
 export async function POST(request: NextRequest) {
@@ -50,9 +53,13 @@ export async function POST(request: NextRequest) {
       blog: getAccountKey(target.blogUrl),
       magazine: target.magazineUrl ? getAccountKey(target.magazineUrl) : '',
       homepage: target.homepageUrl ? getAccountKey(target.homepageUrl) : '',
+      extras: (target.extraUrls ?? []).map((url) => getAccountKey(url)),
     });
     // 등록한 주소(블로그 칸에 넣은 홈페이지 포함)는 웹사이트 결과여도 콘텐츠로 센다
-    const siteKeys = targets.flatMap((target) => Object.values(keysOf(target))).filter(Boolean);
+    const siteKeys = targets.flatMap((target) => {
+      const { extras, ...keys } = keysOf(target);
+      return [...Object.values(keys), ...extras];
+    }).filter(Boolean);
     const rankOf = (contents: ContentItem[], key: string) => key ? contents.find((content) => content.key === key)?.rank ?? null : null;
 
     const results: KeywordSearchResult[] = [];
@@ -69,6 +76,7 @@ export async function POST(request: NextRequest) {
             contentRank: rankOf(contents, keys.blog),
             magazineRank: rankOf(contents, keys.magazine),
             homepageRank: rankOf(contents, keys.homepage),
+            extraRanks: keys.extras.map((key) => rankOf(contents, key)),
           }];
         }));
         results.push({ keyword, places, contents, ranks });

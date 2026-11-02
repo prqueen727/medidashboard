@@ -14,6 +14,7 @@ alter table public.clinics add column if not exists magazine_url text;
 alter table public.clinics add column if not exists homepage_url text;
 alter table public.clinics add column if not exists name_aliases text[] not null default '{}';
 alter table public.clinics add column if not exists is_hidden boolean not null default false;
+alter table public.clinics add column if not exists extra_channels jsonb not null default '[]'::jsonb;
 
 create table if not exists public.rank_snapshots (
   id uuid primary key default gen_random_uuid(),

@@ -11,10 +11,19 @@ interface Clinic {
   blog_url: string;
   magazine_url: string | null;
   homepage_url: string | null;
+  extra_channels?: ExtraChannel[] | null;
   name_aliases?: string[];
   is_hidden?: boolean;
   keywords: string[];
 }
+
+// 홈페이지·매거진 외에 함께 분석할 채널 (병원당 최대 MAX_EXTRA_CHANNELS개)
+interface ExtraChannel {
+  label: string;
+  url: string;
+}
+
+const MAX_EXTRA_CHANNELS = 2;
 
 interface ClinicForm {
   name: string;
@@ -22,6 +31,7 @@ interface ClinicForm {
   blogUrl: string;
   magazineUrl: string;
   homepageUrl: string;
+  extraChannels: ExtraChannel[];
   nameAliases: string;
   isHidden: boolean;
   keywords: string;
@@ -71,6 +81,8 @@ interface KeywordResult {
   integratedRank?: number | null;
   magazineRank?: number | null;
   homepageRank?: number | null;
+  // 분석 당시 등록된 추가 채널 이름과 순위 (나중에 채널을 바꿔도 과거 기록은 그대로)
+  extraRanks?: { label: string; rank: number | null }[];
   places?: PlaceItem[];
   contents?: ContentItem[];
   trackedCompetitors?: TrackedCompetitor[];
@@ -81,7 +93,7 @@ interface KeywordSearchResult {
   keyword: string;
   places: PlaceItem[];
   contents: ContentItem[];
-  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null }>;
+  ranks: Record<string, { placeRank: number | null; contentRank: number | null; magazineRank: number | null; homepageRank: number | null; extraRanks: (number | null)[] }>;
   error?: string;
 }
 
@@ -149,8 +161,8 @@ function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   if (!item) return null;
   if (metric === 'place') return item.placeRank?.rank ?? null;
   if (metric === 'blog') return item.integratedRank ?? null;
-  // 공식 블로그·웹 매거진·홈페이지 중 가장 높은 순위
-  return bestRank(item.integratedRank, item.magazineRank, item.homepageRank);
+  // 공식 블로그·웹 매거진·홈페이지·추가 채널 중 가장 높은 순위
+  return bestRank(item.integratedRank, item.magazineRank, item.homepageRank, ...(item.extraRanks ?? []).map((extra) => extra.rank));
 }
 
 function normalizeName(value: string) {
@@ -174,7 +186,7 @@ function getNameMentions(item: KeywordResult, { names, urls }: NameTarget) {
 }
 
 function clinicNames(clinic: Clinic): NameTarget {
-  return { names: [clinic.name, ...(clinic.name_aliases ?? [])], urls: [clinic.blog_url, clinic.magazine_url, clinic.homepage_url] };
+  return { names: [clinic.name, ...(clinic.name_aliases ?? [])], urls: [clinic.blog_url, clinic.magazine_url, clinic.homepage_url, ...(clinic.extra_channels ?? []).map((channel) => channel.url)] };
 }
 
 // 상호명 노출 개수를 내 병원과 비교한 차이
@@ -203,7 +215,7 @@ function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null 
   );
 }
 
-const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', nameAliases: '', isHidden: false, keywords: '' };
+const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', extraChannels: [], nameAliases: '', isHidden: false, keywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '', homepageUrl: '' };
 
 function bestRank(...ranks: (number | null | undefined)[]) {
@@ -218,6 +230,7 @@ function toClinicForm(clinic: Clinic): ClinicForm {
     blogUrl: clinic.blog_url,
     magazineUrl: clinic.magazine_url ?? '',
     homepageUrl: clinic.homepage_url ?? '',
+    extraChannels: (clinic.extra_channels ?? []).map((channel) => ({ ...channel })),
     nameAliases: (clinic.name_aliases ?? []).join(', '),
     isHidden: clinic.is_hidden ?? false,
     keywords: clinic.keywords.join(', '),
@@ -248,11 +261,12 @@ function Rank({ value }: { value?: number | null }) {
   return value ? <strong className="rank-value">{value}<small>위</small></strong> : <span className="rank-out">순위권 외</span>;
 }
 
-// 통합검색 순위: 공식 블로그는 초록색, 웹 매거진은 파란색, 홈페이지는 보라색
-function ContentRanks({ blogRank, magazineRank, homepageRank, showMagazine, showHomepage }: {
+// 통합검색 순위: 공식 블로그는 초록색, 웹 매거진은 파란색, 홈페이지는 보라색, 추가 채널은 주황·청록색
+function ContentRanks({ blogRank, magazineRank, homepageRank, extraRanks, showMagazine, showHomepage }: {
   blogRank?: number | null;
   magazineRank?: number | null;
   homepageRank?: number | null;
+  extraRanks?: KeywordResult['extraRanks'];
   showMagazine: boolean;
   showHomepage: boolean;
 }) {
@@ -262,6 +276,7 @@ function ContentRanks({ blogRank, magazineRank, homepageRank, showMagazine, show
       <span className="content-rank blog">블로그 {label(blogRank)}</span>
       {showMagazine && <span className="content-rank magazine">매거진 {label(magazineRank)}</span>}
       {showHomepage && <span className="content-rank homepage">홈페이지 {label(homepageRank)}</span>}
+      {extraRanks?.map((extra, index) => <span className={`content-rank extra-${index}`} key={index}>{extra.label} {label(extra.rank)}</span>)}
     </span>
   );
 }
@@ -414,6 +429,7 @@ export default function DashboardClient() {
               blogUrl: clinic.blog_url,
               ...(clinic.magazine_url ? { magazineUrl: clinic.magazine_url } : {}),
               ...(clinic.homepage_url ? { homepageUrl: clinic.homepage_url } : {}),
+              extraUrls: (clinic.extra_channels ?? []).map((channel) => channel.url),
             },
             ...competitorList.map((competitor) => ({
               id: competitor.id,
@@ -438,6 +454,7 @@ export default function DashboardClient() {
           integratedRank: mine?.contentRank ?? null,
           magazineRank: mine?.magazineRank ?? null,
           homepageRank: mine?.homepageRank ?? null,
+          extraRanks: (clinic.extra_channels ?? []).map((channel, index) => ({ label: channel.label, rank: mine?.extraRanks?.[index] ?? null })),
           places: search.places,
           contents: search.contents,
           integratedError: search.error,
@@ -570,6 +587,7 @@ export default function DashboardClient() {
         blogUrl: form.blogUrl.trim(),
         magazineUrl: form.magazineUrl.trim(),
         homepageUrl: form.homepageUrl.trim(),
+        extraChannels: form.extraChannels.map((channel) => ({ label: channel.label.trim(), url: channel.url.trim() })),
         nameAliases: getKeywords(form.nameAliases),
         isHidden: form.isHidden,
         keywords,
@@ -865,6 +883,7 @@ export default function DashboardClient() {
                     <div className="blog"><small>공식 블로그</small><Rank value={item.integratedRank} /></div>
                     {selectedClinic?.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
                     {selectedClinic?.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
+                    {item.extraRanks?.map((extra, index) => <div className={`extra-${index}`} key={index}><small>{extra.label}</small><Rank value={extra.rank} /></div>)}
                     {item.contents && selectedClinic && (
                       <div className="mentions" title={getNameMentions(item, clinicNames(selectedClinic)).map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined}>
                         <small>상호명</small><strong className="rank-value">{getNameMentions(item, clinicNames(selectedClinic)).length}<small>개</small></strong>
@@ -876,7 +895,7 @@ export default function DashboardClient() {
               </div>
             ))}
             {displayedAnalysis.placeName && <p className="result-footnote">대상 플레이스: {displayedAnalysis.placeName}</p>}
-            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역에서 광고를 제외한 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그·웹 매거진·홈페이지의 순서입니다.</p>
+            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역에서 광고를 제외한 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그·웹 매거진·홈페이지·추가 채널의 순서입니다.</p>
           </div>
         )}
 
@@ -894,10 +913,11 @@ export default function DashboardClient() {
               const blogKey = selectedClinic ? getAccountKey(selectedClinic.blog_url) : '';
               const magazineKey = selectedClinic?.magazine_url ? getAccountKey(selectedClinic.magazine_url) : '';
               const homepageKey = selectedClinic?.homepage_url ? getAccountKey(selectedClinic.homepage_url) : '';
+              const extraKeys = (selectedClinic?.extra_channels ?? []).map((channel) => ({ label: channel.label, key: getAccountKey(channel.url) }));
               return (
                 <article className="list-card" key={item.keyword}>
                   <div className="list-heading"><div><span className="section-kicker">INTEGRATED SEARCH</span><h3>{item.keyword}</h3></div>
-                    <ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
+                    <ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank} extraRanks={item.extraRanks}
                       showMagazine={Boolean(magazineKey)} showHomepage={Boolean(homepageKey)} /></div>
                   {item.contents?.length ? <div className="result-list">{item.contents.slice(0, 15).map((content) => (
                     <a className="result-row" key={`${item.keyword}-${content.rank}`} href={content.link} target="_blank" rel="noreferrer">
@@ -906,6 +926,7 @@ export default function DashboardClient() {
                         {content.key === blogKey && <span className="own-tag blog">공식 블로그</span>}
                         {magazineKey && content.key === magazineKey && <span className="own-tag magazine">웹 매거진</span>}
                         {homepageKey && content.key === homepageKey && <span className="own-tag homepage">홈페이지</span>}
+                        {extraKeys.map((extra, index) => extra.key && content.key === extra.key && <span className={`own-tag extra-${index}`} key={index}>{extra.label}</span>)}
                       </strong><small>{CONTENT_TYPE_LABELS[content.type]} · {content.key}</small></span>
                       <span className="row-arrow">↗</span>
                     </a>
@@ -1001,6 +1022,30 @@ export default function DashboardClient() {
                   <span>검색용 상호명 <small>선택 · 쉼표로 구분 · 상호명 개수를 셀 때 병원명과 함께 찾습니다</small></span>
                   <input value={form.nameAliases} onChange={(event) => setForm({ ...form, nameAliases: event.target.value })} placeholder="예: 필한방병원, 필한의원" />
                 </label>
+                {form.extraChannels.map((channel, index) => {
+                  const updateChannel = (patch: Partial<ExtraChannel>) => setForm({
+                    ...form,
+                    extraChannels: form.extraChannels.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
+                  });
+                  return (
+                    <div className="wide extra-channel" key={index}>
+                      <label>
+                        <span>추가 채널 {index + 1} 이름</span>
+                        <input value={channel.label} onChange={(event) => updateChannel({ label: event.target.value })} placeholder="예: 인스타그램" maxLength={20} />
+                      </label>
+                      <label>
+                        <span>추가 채널 {index + 1} 주소</span>
+                        <input value={channel.url} onChange={(event) => updateChannel({ url: event.target.value })} placeholder="예: post.naver.com/아이디 또는 www.example.com" />
+                      </label>
+                      <button type="button" className="text-button danger-text" onClick={() => setForm({ ...form, extraChannels: form.extraChannels.filter((_, itemIndex) => itemIndex !== index) })}>삭제</button>
+                    </div>
+                  );
+                })}
+                {form.extraChannels.length < MAX_EXTRA_CHANNELS && (
+                  <button type="button" className="text-button add-channel wide" onClick={() => setForm({ ...form, extraChannels: [...form.extraChannels, { label: '', url: '' }] })}>
+                    + 분석할 채널 추가 <small>최대 {MAX_EXTRA_CHANNELS}개</small>
+                  </button>
+                )}
                 <label className="wide">
                   <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
                   <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
@@ -1074,7 +1119,7 @@ export default function DashboardClient() {
                       <tr key={item.keyword}>
                         <td>{item.keyword}</td>
                         <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
-                        <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank}
+                        <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank} extraRanks={item.extraRanks}
                           showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} /></td>
                       </tr>
                     ))}</tbody>
