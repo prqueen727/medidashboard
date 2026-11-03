@@ -14,7 +14,10 @@ interface Clinic {
   extra_channels?: ExtraChannel[] | null;
   name_aliases?: string[];
   is_hidden?: boolean;
+  // 콘텐츠 분석 키워드
   keywords: string[];
+  // 플레이스 분석 키워드 (비어 있으면 콘텐츠 키워드로 플레이스도 분석)
+  place_keywords?: string[] | null;
 }
 
 // 홈페이지·매거진 외에 함께 분석할 채널 (병원당 최대 MAX_EXTRA_CHANNELS개)
@@ -35,6 +38,7 @@ interface ClinicForm {
   nameAliases: string;
   isHidden: boolean;
   keywords: string;
+  placeKeywords: string;
 }
 
 interface SavedCompetitor {
@@ -110,6 +114,9 @@ const CONTENT_TYPE_LABELS: Record<ContentItem['type'], string> = {
 interface Analysis {
   placeName?: string;
   keywordResults: KeywordResult[];
+  // 분석 당시의 플레이스·콘텐츠 키워드 (이 값이 없는 예전 기록은 모든 키워드를 둘 다로 본다)
+  placeKeywords?: string[];
+  contentKeywords?: string[];
   competitors: Competitor[];
   competitorError?: string;
   trackedRankError?: string;
@@ -165,6 +172,17 @@ function getKeywordRank(item: KeywordResult | undefined, metric: TrendMetric) {
   return bestRank(item.integratedRank, item.magazineRank, item.homepageRank, ...(item.extraRanks ?? []).map((extra) => extra.rank));
 }
 
+function clinicKeywords(clinic: Clinic | undefined, metric: CompareMetric) {
+  if (!clinic) return [];
+  return metric === 'place' && clinic.place_keywords?.length ? clinic.place_keywords : clinic.keywords;
+}
+
+// 분석 결과 중 플레이스(또는 콘텐츠) 키워드에 해당하는 것만
+function resultsFor(analysis: Analysis, metric: CompareMetric) {
+  const keywords = metric === 'place' ? analysis.placeKeywords : analysis.contentKeywords;
+  return keywords ? analysis.keywordResults.filter((item) => keywords.includes(item.keyword)) : analysis.keywordResults;
+}
+
 function normalizeName(value: string) {
   return value.toLowerCase().replace(/[\s·.,()[\]-]/g, '');
 }
@@ -215,7 +233,7 @@ function RankGap({ mine, theirs }: { mine: number | null; theirs: number | null 
   );
 }
 
-const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', extraChannels: [], nameAliases: '', isHidden: false, keywords: '' };
+const emptyForm: ClinicForm = { name: '', placeId: '', blogUrl: '', magazineUrl: '', homepageUrl: '', extraChannels: [], nameAliases: '', isHidden: false, keywords: '', placeKeywords: '' };
 const emptyCompetitorForm: CompetitorForm = { name: '', placeId: '', blogUrl: '', homepageUrl: '' };
 
 function bestRank(...ranks: (number | null | undefined)[]) {
@@ -234,6 +252,7 @@ function toClinicForm(clinic: Clinic): ClinicForm {
     nameAliases: (clinic.name_aliases ?? []).join(', '),
     isHidden: clinic.is_hidden ?? false,
     keywords: clinic.keywords.join(', '),
+    placeKeywords: (clinic.place_keywords ?? []).join(', '),
   };
 }
 
@@ -385,9 +404,11 @@ export default function DashboardClient() {
     date: snapshot.snapshot_date,
     values: Object.fromEntries(snapshot.payload.keywordResults.map((item) => [item.keyword, getKeywordRank(item, metric)])),
   }));
-  const keywordOptions = (selectedClinic?.keywords ?? []).map((keyword) => ({ id: keyword, label: keyword }));
-  const activeCompareKeyword = (metric: CompareMetric) =>
-    selectedClinic?.keywords.includes(compareKeywords[metric]) ? compareKeywords[metric] : selectedClinic?.keywords[0] ?? '';
+  const keywordOptions = (metric: CompareMetric) => clinicKeywords(selectedClinic, metric).map((keyword) => ({ id: keyword, label: keyword }));
+  const activeCompareKeyword = (metric: CompareMetric) => {
+    const keywords = clinicKeywords(selectedClinic, metric);
+    return keywords.includes(compareKeywords[metric]) ? compareKeywords[metric] : keywords[0] ?? '';
+  };
   const competitorRank = (competitor: TrackedCompetitor, metric: CompareMetric) =>
     metric === 'place' ? competitor.placeRank : competitor.integratedRank;
   const competitorTrend = (metric: CompareMetric) => snapshots.map((snapshot) => {
@@ -407,7 +428,9 @@ export default function DashboardClient() {
 
   const runAnalysis = useCallback(async (clinic: Clinic, competitorList: SavedCompetitor[] = []) => {
     const placeId = getPlaceId(clinic.place_id);
-    if (!placeId || clinic.keywords.length === 0) {
+    const placeKeywords = clinicKeywords(clinic, 'place');
+    const contentKeywords = clinicKeywords(clinic, 'content');
+    if (!placeId || contentKeywords.length === 0) {
       setNotice('병원 설정에서 플레이스 ID와 검색 키워드를 확인해주세요.');
       return;
     }
@@ -421,7 +444,8 @@ export default function DashboardClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          keywords: clinic.keywords,
+          // 한 번 검색하면 플레이스·콘텐츠 순위가 함께 나오므로 두 키워드 목록을 합쳐 검색한다
+          keywords: [...new Set([...placeKeywords, ...contentKeywords])],
           targets: [
             {
               id: 'clinic',
@@ -469,10 +493,12 @@ export default function DashboardClient() {
         };
       });
 
-      const firstPlaces = keywordResults[0]?.places ?? [];
+      const firstPlaces = keywordResults.find((item) => item.keyword === placeKeywords[0])?.places ?? [];
       const result: Analysis = {
         placeName: firstPlaces.find((place) => place.placeId === placeId)?.name,
         keywordResults,
+        placeKeywords,
+        contentKeywords,
         competitors: firstPlaces.map((place) => ({
           rank: place.rank,
           name: place.isAd ? `${place.name} (광고)` : place.name,
@@ -513,7 +539,8 @@ export default function DashboardClient() {
         if (!active) return;
         setClinics(savedClinics);
         if (!savedClinics.length) setActiveTab('manage');
-        setSelectedClinicId((previous) => savedClinics.some((clinic) => clinic.id === previous) ? previous : savedClinics[0]?.id ?? '');
+        // 접속하자마자 분석하지 않도록 병원은 직접 고르게 한다
+        setSelectedClinicId((previous) => savedClinics.some((clinic) => clinic.id === previous) ? previous : '');
       } catch (error) {
         if (active) setNotice(error instanceof Error ? error.message : '병원 목록을 불러오지 못했습니다.');
       } finally {
@@ -568,12 +595,17 @@ export default function DashboardClient() {
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const keywords = getKeywords(form.keywords);
+    const placeKeywords = getKeywords(form.placeKeywords);
     if (!form.name.trim() || !form.blogUrl.trim() || !getPlaceId(form.placeId) || keywords.length === 0) {
-      setNotice('병원명, 플레이스 ID, 공식 블로그, 검색 키워드를 모두 확인해주세요.');
+      setNotice('병원명, 플레이스 ID, 공식 블로그, 콘텐츠 분석 키워드를 모두 확인해주세요.');
       return;
     }
     if (keywords.length > 20) {
-      setNotice('병원당 검색 키워드는 최대 20개까지 등록할 수 있습니다.');
+      setNotice('콘텐츠 분석 키워드는 최대 20개까지 등록할 수 있습니다.');
+      return;
+    }
+    if (placeKeywords.length > 10) {
+      setNotice('플레이스 분석 키워드는 최대 10개까지 등록할 수 있습니다.');
       return;
     }
 
@@ -591,6 +623,7 @@ export default function DashboardClient() {
         nameAliases: getKeywords(form.nameAliases),
         isHidden: form.isHidden,
         keywords,
+        placeKeywords,
       };
       const { clinic } = await readJson<{ clinic: Clinic }>(await adminFetch('/api/clinics', {
         method: 'POST',
@@ -706,13 +739,12 @@ export default function DashboardClient() {
       await readJson<{ success: boolean }>(await adminFetch(`/api/clinics/${selectedClinic.id}`, { method: 'DELETE' }));
       const remaining = clinics.filter((clinic) => clinic.id !== selectedClinic.id);
       setClinics(remaining);
-      setSelectedClinicId(remaining[0]?.id ?? '');
-      if (!remaining.length) {
-        setForm(emptyForm);
-        setTrackedCompetitors([]);
-        setSnapshots([]);
-        setAnalysis(null);
-      }
+      // 다른 병원을 바로 분석하지 않도록 선택을 비운다
+      setSelectedClinicId('');
+      setForm(emptyForm);
+      setTrackedCompetitors([]);
+      setSnapshots([]);
+      setAnalysis(null);
       setNotice('병원과 순위 기록을 삭제했습니다.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '병원을 삭제하지 못했습니다.');
@@ -729,7 +761,7 @@ export default function DashboardClient() {
       { id: 'clinic', name: selectedClinic?.name ?? '', target: selectedClinic ? clinicNames(selectedClinic) : { names: [], urls: [] } },
       ...trackedCompetitors.map((competitor) => ({ id: competitor.id, name: competitor.name, target: { names: [competitor.name], urls: [competitor.blog_url, competitor.homepage_url] } })),
     ];
-    const rows = analysis.keywordResults.map((item) => ({
+    const rows = resultsFor(analysis, 'content').map((item) => ({
       item,
       mentions: item.contents ? clinics.map((clinic) => getNameMentions(item, clinic.target)) : null,
     }));
@@ -784,7 +816,7 @@ export default function DashboardClient() {
                 <th><span className="compare-head mine">{selectedClinic?.name ?? '내 병원'}</span></th>
                 {trackedCompetitors.map((competitor) => <th key={competitor.id}><span className="compare-head">{competitor.name}</span></th>)}
               </tr></thead>
-              <tbody>{analysis.keywordResults.map((item) => {
+              <tbody>{resultsFor(analysis, metric).map((item) => {
                 const mine = getKeywordRank(item, metric);
                 return (
                   <tr key={item.keyword}>
@@ -808,7 +840,7 @@ export default function DashboardClient() {
         <RankTrendChart title={`${label} 순위 추세 비교`} kicker="COMPETITOR TREND" data={competitorTrend(metric)} options={competitorOptions} defaultCount={8}
           actions={<select className="compare-select" value={activeCompareKeyword(metric)} aria-label={`${label} 비교 키워드`}
             onChange={(event) => setCompareKeywords((previous) => ({ ...previous, [metric]: event.target.value }))}>
-            {selectedClinic?.keywords.map((keyword) => <option key={keyword} value={keyword}>{keyword}</option>)}
+            {clinicKeywords(selectedClinic, metric).map((keyword) => <option key={keyword} value={keyword}>{keyword}</option>)}
           </select>} />
       </>
     );
@@ -842,7 +874,7 @@ export default function DashboardClient() {
           <label htmlFor="clinic-select">분석할 병원</label>
           <select id="clinic-select" value={selectedClinicId} onChange={(event) => handleSelectClinic(event.target.value)} disabled={initializing || clinics.length === 0}>
             {clinics.length === 0 && <option value="">등록된 병원이 없습니다</option>}
-            {clinics.length > 0 && !selectedClinicId && <option value="">새 병원 등록 중</option>}
+            {clinics.length > 0 && !selectedClinicId && <option value="">{activeTab === 'manage' && adminPassword ? '새 병원 등록 중' : '병원을 선택하세요'}</option>}
             {clinics.map((clinic) => <option value={clinic.id} key={clinic.id}>{clinic.name}{clinic.is_hidden ? ' (숨김)' : ''}</option>)}
           </select>
         </div>
@@ -861,14 +893,16 @@ export default function DashboardClient() {
         </div>
 
         {loading && activeTab !== 'manage' && <div className="loading-panel"><span className="spinner large" /><div><strong>네이버 검색 결과를 모으고 있습니다</strong><p>키워드 수와 네이버 응답 속도에 따라 잠시 걸릴 수 있습니다.</p></div></div>}
-        {!loading && !displayedAnalysis && activeTab !== 'history' && activeTab !== 'manage' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : '05 병원 관리 탭에서 병원을 등록하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
+        {!loading && !displayedAnalysis && activeTab !== 'history' && activeTab !== 'manage' && <div className="empty-panel"><div className="empty-icon">⌕</div><strong>{!selectedClinic && clinics.length > 0 ? '분석할 병원을 선택하세요' : selectedDate === 'today' ? '분석을 시작해보세요' : `${formatDate(selectedDate)} 기록이 없습니다`}</strong><p>{selectedClinic ? '오늘의 순위가 저장되면 날짜별 기록에 쌓입니다.' : clinics.length > 0 ? '위의 ‘분석할 병원’에서 병원을 고르면 그 병원의 검색 순위를 확인합니다.' : '05 병원 관리 탭에서 병원을 등록하면 검색 순위를 자동으로 확인합니다.'}</p></div>}
 
         {printAll && <h2 className="print-section-title first">01 플레이스 &amp; 콘텐츠 순위</h2>}
-        {!loading && displayedAnalysis && (activeTab === 'place' || printAll) && (
-          <div className="rank-rows">
-            {displayedAnalysis.keywordResults.map((item) => (
-              <div className="rank-pair" key={item.keyword}>
-                <article className="metric-card">
+        {/* 01 탭: 플레이스 순위 카드 → 그래프, 통합검색 콘텐츠 순위 카드 → 그래프 (인쇄할 때도 01 섹션에 포함) */}
+        {selectedClinic && (activeTab === 'place' || printAll) && <>
+          {!loading && displayedAnalysis && <>
+            <h2 className="rank-section-title"><span className="metric-mark green">P</span> 네이버 플레이스 순위</h2>
+            <div className="rank-grid">
+              {resultsFor(displayedAnalysis, 'place').map((item) => (
+                <article className="metric-card" key={item.keyword}>
                   <div className="metric-topline"><span>네이버 플레이스</span><span className="metric-mark green">P</span></div>
                   <h3>{item.keyword}</h3>
                   <Rank value={item.placeRank?.rank} />
@@ -876,15 +910,26 @@ export default function DashboardClient() {
                     ? `플레이스 영역 ${item.placeRank.totalResults}곳 중 (광고 제외)`
                     : item.placeRank ? (item.placeRank.totalResults ? '통합검색 플레이스 영역에 노출되지 않았습니다' : '통합검색에 플레이스 영역이 없습니다') : '순위 데이터를 확인할 수 없습니다')}</p>
                 </article>
-                <article className="metric-card">
+              ))}
+            </div>
+            {displayedAnalysis.placeName && <p className="result-footnote">대상 플레이스: {displayedAnalysis.placeName}</p>}
+            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역에서 광고를 제외한 노출 순서입니다.</p>
+          </>}
+          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions('place')} />
+
+          {!loading && displayedAnalysis && <>
+            <h2 className="rank-section-title"><span className="metric-mark navy">N</span> 네이버 통합검색 콘텐츠 순위</h2>
+            <div className="rank-grid">
+              {resultsFor(displayedAnalysis, 'content').map((item) => (
+                <article className="metric-card" key={item.keyword}>
                   <div className="metric-topline"><span>네이버 통합검색</span><span className="metric-mark navy">N</span></div>
                   <h3>{item.keyword}</h3>
                   <div className="dual-rank">
                     <div className="blog"><small>공식 블로그</small><Rank value={item.integratedRank} /></div>
-                    {selectedClinic?.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
-                    {selectedClinic?.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
+                    {selectedClinic.magazine_url && <div className="magazine"><small>웹 매거진</small><Rank value={item.magazineRank} /></div>}
+                    {selectedClinic.homepage_url && <div className="homepage"><small>홈페이지</small><Rank value={item.homepageRank} /></div>}
                     {item.extraRanks?.map((extra, index) => <div className={`extra-${index}`} key={index}><small>{extra.label}</small><Rank value={extra.rank} /></div>)}
-                    {item.contents && selectedClinic && (
+                    {item.contents && (
                       <div className="mentions" title={getNameMentions(item, clinicNames(selectedClinic)).map((content) => `${content.rank}. ${content.title}`).join('\n') || undefined}>
                         <small>상호명</small><strong className="rank-value">{getNameMentions(item, clinicNames(selectedClinic)).length}<small>개</small></strong>
                       </div>
@@ -892,24 +937,18 @@ export default function DashboardClient() {
                   </div>
                   <p>{item.integratedError ?? `1페이지 콘텐츠 ${item.contents?.length ?? 0}개 기준`}</p>
                 </article>
-              </div>
-            ))}
-            {displayedAnalysis.placeName && <p className="result-footnote">대상 플레이스: {displayedAnalysis.placeName}</p>}
-            <p className="result-footnote">플레이스 순위는 통합검색 플레이스 영역에서 광고를 제외한 노출 순서입니다. 통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그·웹 매거진·홈페이지·추가 채널의 순서입니다.</p>
-          </div>
-        )}
-
-        {/* 순위 변동 그래프: 01 탭 아래 (인쇄할 때도 01 섹션에 포함) */}
-        {selectedClinic && (activeTab === 'place' || printAll) && <>
-          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
-          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
+              ))}
+            </div>
+            <p className="result-footnote">통합검색 순위는 1페이지에서 광고·플레이스·웹사이트를 제외한 콘텐츠(블로그·카페·지식iN 등) 중 공식 블로그·웹 매거진·홈페이지·추가 채널의 순서입니다.</p>
+          </>}
+          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions('content')}
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
         </>}
 
         {printAll && <h2 className="print-section-title">02 통합검색 콘텐츠</h2>}
         {!loading && displayedAnalysis && (activeTab === 'content' || printAll) && (
           <div className="keyword-panels">
-            {displayedAnalysis.keywordResults.map((item) => {
+            {resultsFor(displayedAnalysis, 'content').map((item) => {
               const blogKey = selectedClinic ? getAccountKey(selectedClinic.blog_url) : '';
               const magazineKey = selectedClinic?.magazine_url ? getAccountKey(selectedClinic.magazine_url) : '';
               const homepageKey = selectedClinic?.homepage_url ? getAccountKey(selectedClinic.homepage_url) : '';
@@ -938,17 +977,16 @@ export default function DashboardClient() {
           </div>
         )}
 
-        {selectedClinic && activeTab === 'content' && !printAll && <>
-          <RankTrendChart title="플레이스 순위 변동" data={keywordTrend('place')} options={keywordOptions} />
-          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions}
+        {selectedClinic && activeTab === 'content' && !printAll && (
+          <RankTrendChart title="콘텐츠 순위 변동" data={keywordTrend('content')} options={keywordOptions('content')}
             footnote="발행한 콘텐츠 중 네이버 통합검색에 가장 높은 순위로 추이를 기록합니다." />
-        </>}
+        )}
 
         {printAll && <h2 className="print-section-title">03 경쟁 병원</h2>}
         {!loading && displayedAnalysis && (activeTab === 'competitor' || printAll) && (
           <>
             {displayedAnalysis.competitors.length > 0 && <div className="list-card competitor-card places-card">
-              <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{selectedClinic?.keywords[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
+              <div className="list-heading"><div><span className="section-kicker">LOCAL SEARCH LANDSCAPE</span><h3>&ldquo;{clinicKeywords(selectedClinic, 'place')[0]}&rdquo; 플레이스 상위 병원</h3></div><span className="count-pill">{displayedAnalysis.competitors.length}곳</span></div>
               <div className="competitor-list">{displayedAnalysis.competitors.map((competitor) => {
                 const isMine = competitor.placeId === selectedClinic?.place_id;
                 return <div className={isMine ? 'competitor-row mine' : 'competitor-row'} key={`${competitor.rank}-${competitor.placeId ?? competitor.name}`}>
@@ -1047,8 +1085,12 @@ export default function DashboardClient() {
                   </button>
                 )}
                 <label className="wide">
-                  <span>검색 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개</small></span>
-                  <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" required />
+                  <span>플레이스 분석 키워드 <small>쉼표로 구분 · 최대 10개 · 비워두면 콘텐츠 분석 키워드로 플레이스도 분석합니다</small></span>
+                  <input value={form.placeKeywords} onChange={(event) => setForm({ ...form, placeKeywords: event.target.value })} placeholder="강남 피부과, 강남역 피부과" />
+                </label>
+                <label className="wide">
+                  <span>콘텐츠 분석 키워드 <small>쉼표 또는 줄바꿈으로 구분 · 최대 20개 · 네이버 통합검색 콘텐츠 순위를 확인합니다</small></span>
+                  <input value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="강남 피부과, 강남 여드름 치료, 강남 리프팅" required />
                 </label>
               </div>
               <label className="hide-toggle">
@@ -1111,6 +1153,9 @@ export default function DashboardClient() {
             {selectedClinic && activeHistoryKey && historyPeriod === 'day' && (() => {
               const snapshot = snapshots.find((item) => item.snapshot_date === activeHistoryKey);
               if (!snapshot) return null;
+              // 플레이스(또는 콘텐츠) 분석 키워드가 아닌 칸은 "-"로 표시
+              const placeResults = resultsFor(snapshot.payload, 'place');
+              const contentResults = resultsFor(snapshot.payload, 'content');
               return (
                 <div className="history-table-wrap">
                   <table className="history-table">
@@ -1118,9 +1163,10 @@ export default function DashboardClient() {
                     <tbody>{snapshot.payload.keywordResults.map((item) => (
                       <tr key={item.keyword}>
                         <td>{item.keyword}</td>
-                        <td>{item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
-                        <td><ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank} extraRanks={item.extraRanks}
-                          showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} /></td>
+                        <td>{!placeResults.includes(item) ? <span className="rank-out">-</span> : item.placeRank?.rank ? `${item.placeRank.rank}위` : '순위권 외'}</td>
+                        <td>{!contentResults.includes(item) ? <span className="rank-out">-</span>
+                          : <ContentRanks blogRank={item.integratedRank} magazineRank={item.magazineRank} homepageRank={item.homepageRank} extraRanks={item.extraRanks}
+                            showMagazine={Boolean(selectedClinic.magazine_url)} showHomepage={Boolean(selectedClinic.homepage_url)} />}</td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -1161,7 +1207,7 @@ export default function DashboardClient() {
                       {columns.map((column) => <th key={column.key}>{column.label}</th>)}
                       <th>{historyPeriod === 'week' ? '주간 최고' : '월간 최고'}</th>
                     </tr></thead>
-                    <tbody>{selectedClinic.keywords.map((keyword) => (
+                    <tbody>{clinicKeywords(selectedClinic, metric).map((keyword) => (
                       <tr key={keyword}>
                         <td>{keyword}</td>
                         {columns.map((column) => <td key={column.key}>{cell(keyword, column.dates, metric)}</td>)}

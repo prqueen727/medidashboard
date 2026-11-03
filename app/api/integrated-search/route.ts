@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
       : [];
     const targets: Target[] = (Array.isArray(body.targets) ? body.targets as unknown[] : []).filter(isTarget);
 
-    if (!keywords.length || keywords.length > 20 || !targets.length || targets.length > 30) {
-      return NextResponse.json({ error: '키워드 1~20개와 순위를 확인할 병원 1~30곳을 입력해주세요.' }, { status: 400 });
+    // 플레이스 키워드(최대 10개)와 콘텐츠 키워드(최대 20개)를 합친 목록을 한 번에 검색한다
+    if (!keywords.length || keywords.length > 30 || !targets.length || targets.length > 30) {
+      return NextResponse.json({ error: '키워드 1~30개와 순위를 확인할 병원 1~30곳을 입력해주세요.' }, { status: 400 });
     }
 
     const keysOf = (target: Target) => ({

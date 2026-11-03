@@ -14,6 +14,7 @@ interface ClinicInput {
   nameAliases?: unknown;
   isHidden?: unknown;
   keywords?: unknown;
+  placeKeywords?: unknown;
   id?: unknown;
 }
 
@@ -38,11 +39,14 @@ function parseClinic(input: ClinicInput) {
   const nameAliases = Array.isArray(input.nameAliases)
     ? [...new Set(input.nameAliases.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
     : [];
-  const keywords = Array.isArray(input.keywords)
-    ? [...new Set(input.keywords.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
-    : typeof input.keywords === 'string'
-      ? [...new Set(input.keywords.split(/[,\n]/).map((item) => item.trim()).filter(Boolean))]
+  const toKeywords = (value: unknown) => Array.isArray(value)
+    ? [...new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
+    : typeof value === 'string'
+      ? [...new Set(value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean))]
       : [];
+  // keywords는 콘텐츠 분석 키워드. 플레이스 키워드가 비어 있으면 콘텐츠 키워드로 플레이스도 분석한다.
+  const keywords = toKeywords(input.keywords);
+  const placeKeywords = toKeywords(input.placeKeywords);
 
   if (!name || name.length > 100) return { error: '병원명은 1~100자로 입력해주세요.' };
   if (!/^\d+$/.test(placeId)) return { error: '올바른 네이버 플레이스 URL 또는 숫자 ID를 입력해주세요.' };
@@ -57,10 +61,13 @@ function parseClinic(input: ClinicInput) {
     return { error: '검색용 상호명은 10개까지, 각 100자 이내로 입력해주세요.' };
   }
   if (keywords.length === 0 || keywords.length > 20 || keywords.some((keyword) => keyword.length > 100)) {
-    return { error: '검색 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
+    return { error: '콘텐츠 분석 키워드는 1~20개, 각 100자 이내로 입력해주세요.' };
+  }
+  if (placeKeywords.length > 10 || placeKeywords.some((keyword) => keyword.length > 100)) {
+    return { error: '플레이스 분석 키워드는 10개까지, 각 100자 이내로 입력해주세요.' };
   }
 
-  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, extra_channels: extraChannels, name_aliases: nameAliases, is_hidden: input.isHidden === true, keywords } };
+  return { value: { name, place_id: placeId, blog_url: blogUrl, magazine_url: magazineUrl || null, homepage_url: homepageUrl || null, extra_channels: extraChannels, name_aliases: nameAliases, is_hidden: input.isHidden === true, keywords, place_keywords: placeKeywords } };
 }
 
 export async function GET(request: NextRequest) {

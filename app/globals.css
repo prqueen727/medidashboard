@@ -108,6 +108,8 @@ button { cursor: pointer; }
 .tab.active .tab-index { color: #159d72; }
 .rank-rows { display: grid; gap: 13px; padding-top: 18px; }
 .rank-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.rank-section-title { display: flex; align-items: center; gap: 9px; margin: 26px 0 12px; color: #293a4a; font-size: 16px; letter-spacing: -.3px; }.rank-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.rank-grid + .result-footnote { margin-top: 12px; }
 .metric-card { min-width: 0; padding: 18px 19px; }
 .metric-topline { display: flex; align-items: center; justify-content: space-between; color: #8994a0; font-size: 11px; }
 .metric-mark { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 7px; font-size: 11px; font-weight: 800; }
@@ -252,7 +254,7 @@ button { cursor: pointer; }
   .tabs { gap: 0; }
   .tab { flex: 1; justify-content: center; gap: 5px; padding-right: 5px; padding-left: 5px; font-size: 11px; }
   .tab-index { display: none; }
-  .rank-pair { grid-template-columns: 1fr; }
+  .rank-pair, .rank-grid { grid-template-columns: 1fr; }
   .list-card { padding: 18px 15px; }
   .history-section, .trend-section { padding: 17px 13px; }
   .history-heading { align-items: flex-start; flex-direction: column; }
